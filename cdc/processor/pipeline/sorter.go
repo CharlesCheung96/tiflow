@@ -208,7 +208,9 @@ func (n *sorterNode) start(
 					// Otherwise the pipeline would deadlock.
 					err = n.flowController.Consume(msg, size, func(batch bool) error {
 						if batch {
-							log.Panic("cdc does not support the batch resolve mechanism at this time")
+							msg := model.NewResolvedPolymorphicEvent(0, lastCRTs)
+							msg.Mode = model.BatchResolvedMode
+							ctx.SendToNextNode(pmessage.PolymorphicEventMessage(msg))
 						} else if lastCRTs > lastSentResolvedTs {
 							// If we are blocking, we send a Resolved Event here to elicit a sink-flush.
 							// Not sending a Resolved Event here will very likely deadlock the pipeline.

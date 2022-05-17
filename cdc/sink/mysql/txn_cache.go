@@ -131,21 +131,28 @@ func splitResolvedTxn(
 		resolvedTxnsWithTheSameCommitTs []*txnsWithTheSameCommitTs
 	)
 
-	checkpointTsMap = make(map[model.TableID]uint64, len(unresolvedTxns))
+	flushedResolvedTsMap := make(map[model.TableID]model.ResolvedTs, len(unresolvedTxns))
 	resolvedTsMap.Range(func(k, v any) bool {
 		tableID := k.(model.TableID)
 		resolved := v.(model.ResolvedTs)
-		checkpointTsMap[tableID] = resolved.Ts
+		flushedResolvedTsMap[tableID] = resolved
 		return true
 	})
 
+	checkpointTsMap = make(map[model.TableID]uint64, len(flushedResolvedTsMap))
 	resolvedRowsMap = make(map[model.TableID][]*model.SingleTableTxn, len(unresolvedTxns))
-	for tableID, resolvedTs := range checkpointTsMap {
+	for tableID, resolved := range flushedResolvedTsMap {
+		if resolved.IsBatchMode() {
+			checkpointTsMap[tableID] = resolved.Ts - 1
+		} else {
+			checkpointTsMap[tableID] = resolved.Ts
+		}
+
 		if txns, ok = unresolvedTxns[tableID]; !ok {
 			continue
 		}
 		i := sort.Search(len(txns), func(i int) bool {
-			return txns[i].commitTs > resolvedTs
+			return txns[i].commitTs > resolved.Ts
 		})
 		if i != 0 {
 			if i == len(txns) {

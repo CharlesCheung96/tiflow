@@ -187,7 +187,8 @@ func (k *mqSink) FlushRowChangedEvents(
 	if ok {
 		checkpointTs = v.(uint64)
 	}
-	if resolved.Ts <= checkpointTs {
+	// MqSink does not support batch resolve mechanism at this time.
+	if resolved.IsBatchMode() || resolved.Ts <= checkpointTs {
 		return checkpointTs, nil
 	}
 	select {
