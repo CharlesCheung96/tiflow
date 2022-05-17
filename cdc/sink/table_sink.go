@@ -98,12 +98,18 @@ func (t *tableSink) FlushRowChangedEvents(
 func (t *tableSink) flushResolvedTs(
 	ctx context.Context, resolved model.ResolvedTs,
 ) (uint64, error) {
-	redoTs, err := t.flushRedoLogs(ctx, resolved.Ts)
-	if err != nil {
-		return 0, errors.Trace(err)
-	}
-	if redoTs < resolved.Ts {
-		resolved.Ts = redoTs
+	if t.redoManager.Enabled() {
+		if resolved.IsBatchMode() {
+			return 0, nil
+		}
+		err := t.redoManager.FlushLog(ctx, t.tableID, resolved.Ts)
+		if err != nil {
+			return 0, errors.Trace(err)
+		}
+		redoTs := t.redoManager.GetMinResolvedTs()
+		if redoTs < resolved.Ts {
+			resolved.Ts = redoTs
+		}
 	}
 
 	checkpointTs, err := t.backendSink.FlushRowChangedEvents(ctx, t.tableID, resolved)
@@ -111,19 +117,6 @@ func (t *tableSink) flushResolvedTs(
 		return 0, errors.Trace(err)
 	}
 	return checkpointTs, nil
-}
-
-// flushRedoLogs flush redo logs and returns redo log resolved ts which means
-// all events before the ts have been persisted to redo log storage.
-func (t *tableSink) flushRedoLogs(ctx context.Context, resolvedTs uint64) (uint64, error) {
-	if t.redoManager.Enabled() {
-		err := t.redoManager.FlushLog(ctx, t.tableID, resolvedTs)
-		if err != nil {
-			return 0, err
-		}
-		return t.redoManager.GetMinResolvedTs(), nil
-	}
-	return resolvedTs, nil
 }
 
 func (t *tableSink) EmitCheckpointTs(_ context.Context, _ uint64, _ []model.TableName) error {

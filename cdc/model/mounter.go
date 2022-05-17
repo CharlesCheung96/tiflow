@@ -109,15 +109,32 @@ const (
 // ResolvedTs is the resolved timestamp of sink module.
 type ResolvedTs struct {
 	Ts   uint64
-	Mode ResolvedMode
+	mode ResolvedMode
 }
 
 // NewResolvedTs creates a new ResolvedTs.
 func NewResolvedTs(t uint64) ResolvedTs {
-	return ResolvedTs{Ts: t, Mode: NormalResolvedMode}
+	return ResolvedTs{Ts: t, mode: NormalResolvedMode}
 }
 
 // NewResolvedTsWithMode creates a ResolvedTs with a given batch type.
 func NewResolvedTsWithMode(t uint64, m ResolvedMode) ResolvedTs {
-	return ResolvedTs{Ts: t, Mode: m}
+	return ResolvedTs{Ts: t, mode: m}
+}
+
+// ParseTs parses a timestamp based on the r.mode.
+func (r ResolvedTs) ParseTs() uint64 {
+	switch r.mode {
+	case NormalResolvedMode:
+		return r.Ts
+	case BatchResolvedMode:
+		return r.Ts - 1
+	default:
+		return 0
+	}
+}
+
+// IsBatchMode returns true if the resolved ts is BatchResolvedMode.
+func (r ResolvedTs) IsBatchMode() bool {
+	return r.mode == BatchResolvedMode
 }
