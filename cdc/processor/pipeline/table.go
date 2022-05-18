@@ -78,7 +78,11 @@ type tablePipelineImpl struct {
 // TODO find a better name or avoid using an interface
 // We use an interface here for ease in unit testing.
 type tableFlowController interface {
-	Consume(msg *model.PolymorphicEvent, size uint64, blockCallBack func(batch bool) error) error
+	Consume(
+		msg *model.PolymorphicEvent,
+		size uint64,
+		blockCallBack func(release func()) error,
+	) error
 	Release(resolvedTs uint64)
 	Abort()
 	GetConsumption() uint64

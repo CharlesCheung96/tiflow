@@ -41,7 +41,8 @@ type TableFlowController struct {
 	// batchGroupCount is the number of txnSizeEntries with same commitTs, which could be:
 	// 1. Different txns with same commitTs but different startTs
 	// 2. TxnSizeEntry split from the same txns which exceeds max rows or max size
-	batchGroupCount uint
+	batchGroupCount uint64
+	batchID         uint64
 
 	lastCommitTs uint64
 }
@@ -52,6 +53,7 @@ type txnSizeEntry struct {
 	commitTs uint64
 	size     uint64
 	rowCount uint64
+	batchID  uint64
 }
 
 // NewTableFlowController creates a new TableFlowController
@@ -72,10 +74,19 @@ func NewTableFlowController(quota uint64) *TableFlowController {
 func (c *TableFlowController) Consume(
 	msg *model.PolymorphicEvent,
 	size uint64,
-	callBack func(batch bool) error,
+	callBack func(release func()) error,
 ) error {
 	commitTs := msg.CRTs
 	lastCommitTs := atomic.LoadUint64(&c.lastCommitTs)
+	blockingCallBack := func() error {
+		release := func() {
+			c.ReleaseBatch(commitTs, c.batchID)
+		}
+		err := callBack(release)
+		c.batchID++
+		c.batchGroupCount = 0
+		return err
+	}
 
 	if commitTs < lastCommitTs {
 		log.Panic("commitTs regressed, report a bug",
@@ -83,24 +94,12 @@ func (c *TableFlowController) Consume(
 			zap.Uint64("lastCommitTs", c.lastCommitTs))
 	}
 
-	if commitTs > lastCommitTs {
-		err := c.memoryQuota.consumeWithBlocking(size, callBack)
-		if err != nil {
-			return errors.Trace(err)
-		}
-	} else {
-		// Here commitTs == lastCommitTs, which means that we are not crossing
-		// a transaction boundary. In this situation, we use `forceConsume` because
-		// blocking the event stream mid-transaction is highly likely to cause
-		// a deadlock.
-		// TODO fix this in the future, after we figure out how to elegantly support large txns.
-		err := c.memoryQuota.forceConsume(size)
-		if err != nil {
-			return errors.Trace(err)
-		}
+	err := c.memoryQuota.consumeWithBlocking(size, blockingCallBack)
+	if err != nil {
+		return errors.Trace(err)
 	}
 
-	c.enqueueSingleMsg(msg, size, callBack)
+	c.enqueueSingleMsg(msg, size, blockingCallBack)
 	return nil
 }
 
@@ -122,11 +121,30 @@ func (c *TableFlowController) Release(resolvedTs uint64) {
 	c.memoryQuota.release(nBytesToRelease)
 }
 
+// ReleaseBatch
+func (c *TableFlowController) ReleaseBatch(resolvedTs, batchID uint64) {
+	var nBytesToRelease uint64
+
+	c.queueMu.Lock()
+	for c.queueMu.queue.Len() > 0 {
+		if peeked := c.queueMu.queue.Front().(*txnSizeEntry); peeked.commitTs < resolvedTs ||
+			(peeked.commitTs == resolvedTs && peeked.batchID <= batchID) {
+			nBytesToRelease += peeked.size
+			c.queueMu.queue.PopFront()
+		} else {
+			break
+		}
+	}
+	c.queueMu.Unlock()
+
+	c.memoryQuota.release(nBytesToRelease)
+}
+
 // Note that msgs received by enqueueSingleMsg must be sorted by commitTs_startTs order.
 func (c *TableFlowController) enqueueSingleMsg(
 	msg *model.PolymorphicEvent,
 	size uint64,
-	callBack func(batch bool) error,
+	blockingCallBack func() error,
 ) {
 	commitTs := msg.CRTs
 	lastCommitTs := atomic.LoadUint64(&c.lastCommitTs)
@@ -138,13 +156,14 @@ func (c *TableFlowController) enqueueSingleMsg(
 	// 1. Processing a new txn with different commitTs.
 	if e = c.queueMu.queue.Back(); e == nil || lastCommitTs < commitTs {
 		atomic.StoreUint64(&c.lastCommitTs, commitTs)
+		c.resetBatch()
 		c.queueMu.queue.PushBack(&txnSizeEntry{
 			startTs:  msg.StartTs,
 			commitTs: commitTs,
 			size:     size,
 			rowCount: 1,
+			batchID:  c.batchID,
 		})
-		c.batchGroupCount = 1
 		msg.Row.SplitTxn = true
 		return
 	}
@@ -166,19 +185,26 @@ func (c *TableFlowController) enqueueSingleMsg(
 	}
 
 	// 3. Split the txn or handle a new txn with the same commitTs.
+	if c.batchGroupCount+1 >= batchSize {
+		_ = blockingCallBack()
+	}
+
+	c.batchGroupCount++
 	c.queueMu.queue.PushBack(&txnSizeEntry{
 		startTs:  msg.StartTs,
 		commitTs: commitTs,
 		size:     size,
 		rowCount: 1,
+		batchID:  c.batchID,
 	})
-	c.batchGroupCount++
 	msg.Row.SplitTxn = true
+}
 
-	if c.batchGroupCount >= batchSize {
-		c.batchGroupCount = 0
-		callBack(true)
-	}
+func (c *TableFlowController) resetBatch() {
+	// At least one batch for each txn.
+	c.batchID = 1
+	// At least one txnSizeEntry for each batch.
+	c.batchGroupCount = 1
 }
 
 // Abort interrupts any ongoing Consume call

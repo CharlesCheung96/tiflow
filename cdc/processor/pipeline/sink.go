@@ -302,6 +302,7 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pmessage.Message) (boo
 			})
 
 			resolved := model.NewResolvedTsWithMode(event.CRTs, event.Mode)
+			resolved.Release = event.Release
 			if err := n.flushSink(ctx, resolved); err != nil {
 				return false, errors.Trace(err)
 			}

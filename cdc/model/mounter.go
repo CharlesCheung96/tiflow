@@ -19,7 +19,8 @@ type PolymorphicEvent struct {
 	// Commit or resolved TS
 	CRTs uint64
 	// Identify whether the resolved event is in batch mode.
-	Mode ResolvedMode
+	Mode    ResolvedMode
+	Release func()
 
 	RawKV *RawKVEntry
 	Row   *RowChangedEvent
@@ -108,23 +109,24 @@ const (
 
 // ResolvedTs is the resolved timestamp of sink module.
 type ResolvedTs struct {
-	Ts   uint64
-	mode ResolvedMode
+	Ts      uint64
+	Mode    ResolvedMode
+	Release func()
 }
 
 // NewResolvedTs creates a new ResolvedTs.
 func NewResolvedTs(t uint64) ResolvedTs {
-	return ResolvedTs{Ts: t, mode: NormalResolvedMode}
+	return ResolvedTs{Ts: t, Mode: NormalResolvedMode}
 }
 
 // NewResolvedTsWithMode creates a ResolvedTs with a given batch type.
 func NewResolvedTsWithMode(t uint64, m ResolvedMode) ResolvedTs {
-	return ResolvedTs{Ts: t, mode: m}
+	return ResolvedTs{Ts: t, Mode: m}
 }
 
 // ParseTs parses a timestamp based on the r.mode.
 func (r ResolvedTs) ParseTs() uint64 {
-	switch r.mode {
+	switch r.Mode {
 	case NormalResolvedMode:
 		return r.Ts
 	case BatchResolvedMode:
@@ -136,5 +138,5 @@ func (r ResolvedTs) ParseTs() uint64 {
 
 // IsBatchMode returns true if the resolved ts is BatchResolvedMode.
 func (r ResolvedTs) IsBatchMode() bool {
-	return r.mode == BatchResolvedMode
+	return r.Mode == BatchResolvedMode
 }
