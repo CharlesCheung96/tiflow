@@ -142,11 +142,7 @@ func splitResolvedTxn(
 	checkpointTsMap = make(map[model.TableID]uint64, len(flushedResolvedTsMap))
 	resolvedRowsMap = make(map[model.TableID][]*model.SingleTableTxn, len(unresolvedTxns))
 	for tableID, resolved := range flushedResolvedTsMap {
-		if resolved.IsBatchMode() {
-			checkpointTsMap[tableID] = resolved.Ts - 1
-		} else {
-			checkpointTsMap[tableID] = resolved.Ts
-		}
+		checkpointTsMap[tableID] = resolved.ParseTs()
 
 		if txns, ok = unresolvedTxns[tableID]; !ok {
 			continue

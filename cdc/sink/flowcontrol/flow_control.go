@@ -100,7 +100,7 @@ func (c *TableFlowController) Consume(
 		}
 	}
 
-	c.enqueueSingleMsg(msg, size)
+	c.enqueueSingleMsg(msg, size, callBack)
 	return nil
 }
 
@@ -123,7 +123,11 @@ func (c *TableFlowController) Release(resolvedTs uint64) {
 }
 
 // Note that msgs received by enqueueSingleMsg must be sorted by commitTs_startTs order.
-func (c *TableFlowController) enqueueSingleMsg(msg *model.PolymorphicEvent, size uint64) {
+func (c *TableFlowController) enqueueSingleMsg(
+	msg *model.PolymorphicEvent,
+	size uint64,
+	callBack func(batch bool) error,
+) {
 	commitTs := msg.CRTs
 	lastCommitTs := atomic.LoadUint64(&c.lastCommitTs)
 
@@ -173,8 +177,7 @@ func (c *TableFlowController) enqueueSingleMsg(msg *model.PolymorphicEvent, size
 
 	if c.batchGroupCount >= batchSize {
 		c.batchGroupCount = 0
-		// TODO(CharlesCheung): add batch resolve mechanism to mitigate oom problem
-		log.Debug("emit batch resolve event throw callback")
+		callBack(true)
 	}
 }
 
