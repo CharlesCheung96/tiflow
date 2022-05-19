@@ -179,7 +179,7 @@ func (k *mqSink) EmitRowChangedEvents(ctx context.Context, rows ...*model.RowCha
 // FlushRowChangedEvents is thread-safe.
 func (k *mqSink) FlushRowChangedEvents(
 	ctx context.Context, tableID model.TableID, resolved model.ResolvedTs,
-) (uint64, error) {
+) (model.ResolvedTs, error) {
 	var checkpointTs uint64
 	v, ok := k.tableCheckpointTsMap.Load(tableID)
 	if ok {
@@ -187,18 +187,18 @@ func (k *mqSink) FlushRowChangedEvents(
 	}
 	// MqSink does not support batch resolve mechanism at this time.
 	if resolved.IsBatchMode() || resolved.Ts <= checkpointTs {
-		return checkpointTs, nil
+		return model.NewResolvedTs(checkpointTs), nil
 	}
 	select {
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		return model.NewResolvedTs(0), ctx.Err()
 	case k.resolvedBuffer <- resolvedTsEvent{
 		tableID:  tableID,
 		resolved: model.NewResolvedTs(resolved.Ts),
 	}:
 	}
 	k.statistics.PrintStatus(ctx)
-	return checkpointTs, nil
+	return model.NewResolvedTs(checkpointTs), nil
 }
 
 // bgFlushTs flush resolvedTs to workers and flush the mqProducer

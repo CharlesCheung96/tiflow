@@ -30,8 +30,7 @@ func dummyCallBack() error {
 	return nil
 }
 
-func dummyCallBackWithRelease(release func()) error {
-	release()
+func dummyCallBackWithRelease(batchID uint64) error {
 	return nil
 }
 
@@ -40,7 +39,7 @@ type mockCallBacker struct {
 	injectedErr error
 }
 
-func (c *mockCallBacker) cb(_ func()) error {
+func (c *mockCallBacker) cb(_ uint64) error {
 	c.timesCalled += 1
 	return c.injectedErr
 }
@@ -278,7 +277,7 @@ func TestFlowControlBasic(t *testing.T) {
 			if event.size != 0 {
 				atomic.AddUint64(&consumedBytes, -event.size)
 			} else {
-				flowController.Release(event.resolvedTs)
+				flowController.Release(model.NewResolvedTs(event.resolvedTs))
 			}
 		}
 
@@ -365,7 +364,7 @@ func TestFlowControlCallBack(t *testing.T) {
 
 			atomic.AddUint64(&consumedBytes, mockedRow.size)
 			err := flowController.Consume(model.NewEmptyPolymorphicEvent(mockedRow.commitTs),
-				mockedRow.size, func(_ func()) error {
+				mockedRow.size, func(_ uint64) error {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
@@ -413,7 +412,7 @@ func TestFlowControlCallBack(t *testing.T) {
 			if event.size != 0 {
 				atomic.AddUint64(&consumedBytes, -event.size)
 			} else {
-				flowController.Release(event.resolvedTs)
+				flowController.Release(model.NewResolvedTs(event.resolvedTs))
 			}
 		}
 
@@ -436,7 +435,7 @@ func TestFlowControlCallBackNotBlockingRelease(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 511, func(_ func()) error {
+		err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 511, func(_ uint64) error {
 			t.Error("unreachable")
 			return nil
 		})
@@ -449,11 +448,11 @@ func TestFlowControlCallBackNotBlockingRelease(t *testing.T) {
 			<-time.After(time.Second * 1)
 			// makes sure that this test case is valid
 			require.Equal(t, int32(1), atomic.LoadInt32(&isBlocked))
-			controller.Release(1)
+			controller.Release(model.NewResolvedTs(1))
 			cancel()
 		}()
 
-		err = controller.Consume(model.NewEmptyPolymorphicEvent(2), 511, func(_ func()) error {
+		err = controller.Consume(model.NewEmptyPolymorphicEvent(2), 511, func(_ uint64) error {
 			atomic.StoreInt32(&isBlocked, 1)
 			<-ctx.Done()
 			atomic.StoreInt32(&isBlocked, 0)
@@ -478,12 +477,12 @@ func TestFlowControlCallBackError(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 511, func(_ func()) error {
+		err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 511, func(_ uint64) error {
 			t.Error("unreachable")
 			return nil
 		})
 		require.Nil(t, err)
-		err = controller.Consume(model.NewEmptyPolymorphicEvent(2), 511, func(_ func()) error {
+		err = controller.Consume(model.NewEmptyPolymorphicEvent(2), 511, func(_ uint64) error {
 			<-ctx.Done()
 			return ctx.Err()
 		})
@@ -500,7 +499,7 @@ func TestFlowControlConsumeLargerThanQuota(t *testing.T) {
 	t.Parallel()
 
 	controller := NewTableFlowController(1024)
-	err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 2048, func(_ func()) error {
+	err := controller.Consume(model.NewEmptyPolymorphicEvent(1), 2048, func(_ uint64) error {
 		t.Error("unreachable")
 		return nil
 	})
@@ -599,7 +598,7 @@ func BenchmarkTableFlowController(B *testing.B) {
 			}
 
 			if event.size == 0 {
-				flowController.Release(event.resolvedTs)
+				flowController.Release(model.NewResolvedTs(event.resolvedTs))
 			}
 		}
 

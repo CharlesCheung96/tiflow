@@ -15,12 +15,9 @@ package model
 
 // PolymorphicEvent describes an event can be in multiple states.
 type PolymorphicEvent struct {
-	StartTs uint64
-	// Commit or resolved TS
-	CRTs uint64
-	// Identify whether the resolved event is in batch mode.
-	Mode    ResolvedMode
-	Release func()
+	StartTs  uint64
+	CRTs     uint64
+	Resolved *ResolvedTs
 
 	RawKV *RawKVEntry
 	Row   *RowChangedEvent
@@ -69,7 +66,7 @@ func (e *PolymorphicEvent) IsResolved() bool {
 
 // IsBatchResolved returns true if the event is batch resolved event.
 func (e *PolymorphicEvent) IsBatchResolved() bool {
-	return e.IsResolved() && e.Mode == BatchResolvedMode
+	return e.IsResolved() && e.Resolved.Mode == BatchResolvedMode
 }
 
 // ComparePolymorphicEvents compares two events by CRTs, Resolved, StartTs, Delete/Put order.
@@ -111,7 +108,7 @@ const (
 type ResolvedTs struct {
 	Ts      uint64
 	Mode    ResolvedMode
-	Release func()
+	BatchID uint64
 }
 
 // NewResolvedTs creates a new ResolvedTs.
@@ -139,4 +136,16 @@ func (r ResolvedTs) ParseTs() uint64 {
 // IsBatchMode returns true if the resolved ts is BatchResolvedMode.
 func (r ResolvedTs) IsBatchMode() bool {
 	return r.Mode == BatchResolvedMode
+}
+
+// EqualOrGreater judge whether the resolved ts is equal or greater than the given ts.
+func (r ResolvedTs) EqualOrGreater(t ResolvedTs) bool {
+	switch r.Mode {
+	case NormalResolvedMode:
+		return r.Ts >= t.Ts
+	case BatchResolvedMode:
+		return r.Ts >= t.Ts && r.BatchID >= t.BatchID
+	default:
+		return false
+	}
 }

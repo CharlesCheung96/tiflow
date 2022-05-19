@@ -14,6 +14,7 @@
 package flowcontrol
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -74,15 +75,12 @@ func NewTableFlowController(quota uint64) *TableFlowController {
 func (c *TableFlowController) Consume(
 	msg *model.PolymorphicEvent,
 	size uint64,
-	callBack func(release func()) error,
+	callBack func(batchID uint64) error,
 ) error {
 	commitTs := msg.CRTs
 	lastCommitTs := atomic.LoadUint64(&c.lastCommitTs)
 	blockingCallBack := func() error {
-		release := func() {
-			c.ReleaseBatch(commitTs, c.batchID)
-		}
-		err := callBack(release)
+		err := callBack(c.batchID)
 		c.batchID++
 		c.batchGroupCount = 0
 		return err
@@ -103,27 +101,15 @@ func (c *TableFlowController) Consume(
 	return nil
 }
 
-// Release is called when all events committed before resolvedTs has been freed from memory.
-func (c *TableFlowController) Release(resolvedTs uint64) {
+// Release releases the memory quota based on the given resolved timestamp.
+func (c *TableFlowController) Release(resolved model.ResolvedTs) {
 	var nBytesToRelease uint64
 
-	c.queueMu.Lock()
-	for c.queueMu.queue.Len() > 0 {
-		if peeked := c.queueMu.queue.Front().(*txnSizeEntry); peeked.commitTs <= resolvedTs {
-			nBytesToRelease += peeked.size
-			c.queueMu.queue.PopFront()
-		} else {
-			break
-		}
+	resolvedTs := resolved.Ts
+	batchID := resolved.BatchID
+	if resolved.Mode != model.BatchResolvedMode {
+		batchID = math.MaxInt64
 	}
-	c.queueMu.Unlock()
-
-	c.memoryQuota.release(nBytesToRelease)
-}
-
-// ReleaseBatch
-func (c *TableFlowController) ReleaseBatch(resolvedTs, batchID uint64) {
-	var nBytesToRelease uint64
 
 	c.queueMu.Lock()
 	for c.queueMu.queue.Len() > 0 {

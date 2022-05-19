@@ -206,7 +206,7 @@ func (n *sorterNode) start(
 					size := uint64(msg.Row.ApproximateBytes())
 					// NOTE we allow the quota to be exceeded if blocking means interrupting a transaction.
 					// Otherwise the pipeline would deadlock.
-					err = n.flowController.Consume(msg, size, func(release func()) error {
+					err = n.flowController.Consume(msg, size, func(batchID uint64) error {
 						if lastCRTs > lastSentResolvedTs {
 							// If we are blocking, we send a Resolved Event here to elicit a sink-flush.
 							// Not sending a Resolved Event here will very likely deadlock the pipeline.
@@ -216,8 +216,9 @@ func (n *sorterNode) start(
 							ctx.SendToNextNode(pmessage.PolymorphicEventMessage(msg))
 						} else if lastCRTs == lastSentResolvedTs {
 							msg := model.NewResolvedPolymorphicEvent(0, lastCRTs)
-							msg.Mode = model.BatchResolvedMode
-							msg.Release = release
+							r := model.NewResolvedTsWithMode(lastCRTs, model.BatchResolvedMode)
+							r.BatchID = batchID
+							msg.Resolved = &r
 							ctx.SendToNextNode(pmessage.PolymorphicEventMessage(msg))
 						}
 						return nil

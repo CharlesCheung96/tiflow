@@ -1250,7 +1250,7 @@ func TestNewMySQLSinkExecDML(t *testing.T) {
 	err = retry.Do(context.Background(), func() error {
 		ts, err := sink.FlushRowChangedEvents(ctx, 1, model.NewResolvedTs(uint64(2)))
 		require.Nil(t, err)
-		if ts < uint64(2) {
+		if ts.Ts < uint64(2) {
 			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts, 2)
 		}
 		return nil
@@ -1261,7 +1261,7 @@ func TestNewMySQLSinkExecDML(t *testing.T) {
 	err = retry.Do(context.Background(), func() error {
 		ts, err := sink.FlushRowChangedEvents(ctx, 2, model.NewResolvedTs(uint64(4)))
 		require.Nil(t, err)
-		if ts < uint64(4) {
+		if ts.Ts < uint64(4) {
 			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts, 4)
 		}
 		return nil
@@ -1789,7 +1789,7 @@ func TestMySQLSinkFlushResolvedTs(t *testing.T) {
 	require.Nil(t, err)
 	checkpoint, err := sink.FlushRowChangedEvents(ctx, model.TableID(1), model.NewResolvedTs(1))
 	require.Nil(t, err)
-	require.True(t, checkpoint <= 1)
+	require.True(t, checkpoint.Ts <= 1)
 	rows := []*model.RowChangedEvent{
 		{
 			Table:    &model.TableName{Schema: "s1", Table: "t1", TableID: 1},
@@ -1807,9 +1807,9 @@ func TestMySQLSinkFlushResolvedTs(t *testing.T) {
 	err = sink.EmitRowChangedEvents(ctx, rows...)
 	require.Nil(t, err)
 	checkpoint, err = sink.FlushRowChangedEvents(ctx, model.TableID(1), model.NewResolvedTs(6))
-	require.True(t, checkpoint <= 6)
+	require.True(t, checkpoint.Ts <= 6)
 	require.Nil(t, err)
-	require.True(t, sink.getTableCheckpointTs(model.TableID(1)) <= 6)
+	require.True(t, sink.getTableCheckpointTs(model.TableID(1)).Ts <= 6)
 	rows = []*model.RowChangedEvent{
 		{
 			Table:    &model.TableName{Schema: "s1", Table: "t2", TableID: 2},
@@ -1827,9 +1827,9 @@ func TestMySQLSinkFlushResolvedTs(t *testing.T) {
 	err = sink.EmitRowChangedEvents(ctx, rows...)
 	require.Nil(t, err)
 	checkpoint, err = sink.FlushRowChangedEvents(ctx, model.TableID(2), model.NewResolvedTs(5))
-	require.True(t, checkpoint <= 5)
+	require.True(t, checkpoint.Ts <= 5)
 	require.Nil(t, err)
-	require.True(t, sink.getTableCheckpointTs(model.TableID(2)) <= 5)
+	require.True(t, sink.getTableCheckpointTs(model.TableID(2)).Ts <= 5)
 	_ = sink.Close(ctx)
 	_, err = sink.FlushRowChangedEvents(ctx, model.TableID(2), model.NewResolvedTs(6))
 	require.Nil(t, err)
@@ -1905,7 +1905,7 @@ func TestCleanTableResource(t *testing.T) {
 	require.Nil(t, s.EmitRowChangedEvents(ctx, &model.RowChangedEvent{
 		Table: &model.TableName{TableID: tblID, Schema: "test", Table: "t1"},
 	}))
-	s.tableCheckpointTs.Store(tblID, uint64(1))
+	s.tableCheckpointTs.Store(tblID, model.NewResolvedTs(uint64(1)))
 	s.tableMaxResolvedTs.Store(tblID, model.NewResolvedTs(uint64(2)))
 	_, ok := s.txnCache.unresolvedTxns[tblID]
 	require.True(t, ok)
