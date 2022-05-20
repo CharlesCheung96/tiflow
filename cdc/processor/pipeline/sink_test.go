@@ -43,7 +43,7 @@ type mockFlowController struct{}
 func (c *mockFlowController) Consume(
 	msg *model.PolymorphicEvent,
 	size uint64,
-	blockCallBack func(uint64) error,
+	blockCallBack func(uint64, func(model.ResolvedTs)) error,
 ) error {
 	return nil
 }

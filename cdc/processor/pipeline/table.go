@@ -81,7 +81,7 @@ type tableFlowController interface {
 	Consume(
 		msg *model.PolymorphicEvent,
 		size uint64,
-		blockCallBack func(batchID uint64) error,
+		blockCallBack func(batchID uint64, release func(model.ResolvedTs)) error,
 	) error
 	Release(resolved model.ResolvedTs)
 	Abort()

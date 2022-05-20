@@ -75,14 +75,15 @@ func NewTableFlowController(quota uint64) *TableFlowController {
 func (c *TableFlowController) Consume(
 	msg *model.PolymorphicEvent,
 	size uint64,
-	callBack func(batchID uint64) error,
+	callBack func(batchID uint64, release func(model.ResolvedTs)) error,
 ) error {
 	commitTs := msg.CRTs
 	lastCommitTs := atomic.LoadUint64(&c.lastCommitTs)
 	blockingCallBack := func() error {
-		err := callBack(c.batchID)
+		err := callBack(c.batchID, c.Release)
 		c.batchID++
 		c.batchGroupCount = 0
+		msg.Row.SplitTxn = true
 		return err
 	}
 
@@ -163,7 +164,7 @@ func (c *TableFlowController) enqueueSingleMsg(
 	}
 
 	// 2. Append row to current txn entry.
-	if txnEntry.startTs == msg.Row.StartTs &&
+	if txnEntry.batchID == c.batchID && txnEntry.startTs == msg.Row.StartTs &&
 		txnEntry.rowCount < maxRowsPerTxn && txnEntry.size < maxSizePerTxn {
 		txnEntry.size += size
 		txnEntry.rowCount++

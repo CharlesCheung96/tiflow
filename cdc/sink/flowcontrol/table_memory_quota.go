@@ -14,6 +14,7 @@
 package flowcontrol
 
 import (
+	"math"
 	"sync"
 
 	"github.com/pingcap/errors"
@@ -28,6 +29,7 @@ import (
 // A higher-level controller more suitable for direct use by the processor is TableFlowController.
 type tableMemoryQuota struct {
 	quota uint64 // should not be changed once initialized
+	bak   uint64
 
 	isAborted atomic.Bool
 
@@ -43,7 +45,8 @@ type tableMemoryQuota struct {
 // quota: max advised memory consumption in bytes.
 func newTableMemoryQuota(quota uint64) *tableMemoryQuota {
 	ret := &tableMemoryQuota{
-		quota: quota,
+		bak:   quota,
+		quota: math.MaxInt64,
 	}
 
 	ret.consumedCond = sync.NewCond(&ret.consumed)

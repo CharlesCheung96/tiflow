@@ -274,6 +274,9 @@ func (s *mysqlSink) flushRowChangedEvents(ctx context.Context) {
 			s.dispatchAndExecTxns(ctx, resolvedTxnsMap)
 		}
 		for tableID, resolved := range checkpointTsMap {
+			if resolved.Release != nil {
+				resolved.Release(resolved)
+			}
 			s.tableCheckpointTs.Store(tableID, resolved)
 		}
 	}

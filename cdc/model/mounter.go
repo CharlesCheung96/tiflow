@@ -109,6 +109,7 @@ type ResolvedTs struct {
 	Ts      uint64
 	Mode    ResolvedMode
 	BatchID uint64
+	Release func(ResolvedTs)
 }
 
 // NewResolvedTs creates a new ResolvedTs.

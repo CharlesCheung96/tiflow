@@ -1251,7 +1251,7 @@ func TestNewMySQLSinkExecDML(t *testing.T) {
 		ts, err := sink.FlushRowChangedEvents(ctx, 1, model.NewResolvedTs(uint64(2)))
 		require.Nil(t, err)
 		if ts.Ts < uint64(2) {
-			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts, 2)
+			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts.Ts, 2)
 		}
 		return nil
 	}, retry.WithBackoffBaseDelay(20), retry.WithMaxTries(10), retry.WithIsRetryableErr(cerror.IsRetryableError))
@@ -1262,7 +1262,7 @@ func TestNewMySQLSinkExecDML(t *testing.T) {
 		ts, err := sink.FlushRowChangedEvents(ctx, 2, model.NewResolvedTs(uint64(4)))
 		require.Nil(t, err)
 		if ts.Ts < uint64(4) {
-			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts, 4)
+			return errors.Errorf("checkpoint ts %d less than resolved ts %d", ts.Ts, 4)
 		}
 		return nil
 	}, retry.WithBackoffBaseDelay(20), retry.WithMaxTries(10), retry.WithIsRetryableErr(cerror.IsRetryableError))
