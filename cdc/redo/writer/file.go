@@ -333,6 +333,7 @@ func (w *Writer) close() error {
 }
 
 func (w *Writer) renameInS3(ctx context.Context, oldPath, newPath string) error {
+	log.Error(fmt.Sprintf("redo rename %s to %s", oldPath, newPath))
 	err := w.writeToS3(ctx, newPath)
 	if err != nil {
 		return cerror.WrapError(cerror.ErrS3StorageAPI, err)
@@ -345,9 +346,11 @@ func (w *Writer) getLogFileName() string {
 		return w.op.getLogFileName()
 	}
 	if model.DefaultNamespace == w.cfg.ChangeFeedID.Namespace {
-		return fmt.Sprintf("%s_%s_%d_%s_%d%s", w.cfg.CaptureID,
+		name := fmt.Sprintf("%s_%s_%d_%s_%d%s", w.cfg.CaptureID,
 			w.cfg.ChangeFeedID.ID,
 			w.cfg.CreateTime.Unix(), w.cfg.FileType, w.commitTS.Load(), common.LogEXT)
+		log.Warn("redo write log to: " + name)
+		return name
 	}
 	return fmt.Sprintf("%s_%s_%s_%d_%s_%d%s", w.cfg.CaptureID,
 		w.cfg.ChangeFeedID.Namespace, w.cfg.ChangeFeedID.ID,
