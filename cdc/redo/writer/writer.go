@@ -448,11 +448,15 @@ func (l *LogWriter) GetCurrentResolvedTs(ctx context.Context, tableIDs []int64) 
 		return nil, err
 	}
 
+	log.Warn("[redo] handle resolved ts", zap.Any("resolved_list", l.meta.ResolvedTsList))
 	ret := map[int64]uint64{}
 	for i := 0; i < len(tableIDs); i++ {
 		id := tableIDs[i]
 		if v, ok := l.meta.ResolvedTsList[id]; ok {
 			ret[id] = v
+		} else {
+			log.Warn("[redo] table resolvedTs not found",
+				zap.Int64("table_id", id))
 		}
 	}
 

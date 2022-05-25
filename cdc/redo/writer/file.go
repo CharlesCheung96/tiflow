@@ -333,7 +333,7 @@ func (w *Writer) close() error {
 }
 
 func (w *Writer) renameInS3(ctx context.Context, oldPath, newPath string) error {
-	log.Error(fmt.Sprintf("redo rename %s to %s", oldPath, newPath))
+	log.Error(fmt.Sprintf("[redo] rename %s to %s", oldPath, newPath))
 	err := w.writeToS3(ctx, newPath)
 	if err != nil {
 		return cerror.WrapError(cerror.ErrS3StorageAPI, err)
@@ -349,7 +349,7 @@ func (w *Writer) getLogFileName() string {
 		name := fmt.Sprintf("%s_%s_%d_%s_%d%s", w.cfg.CaptureID,
 			w.cfg.ChangeFeedID.ID,
 			w.cfg.CreateTime.Unix(), w.cfg.FileType, w.commitTS.Load(), common.LogEXT)
-		log.Warn("redo write log to: " + name)
+		log.Warn("[redo] write log to: " + name)
 		return name
 	}
 	return fmt.Sprintf("%s_%s_%s_%d_%s_%d%s", w.cfg.CaptureID,
@@ -573,7 +573,8 @@ func (w *Writer) writeToS3(ctx context.Context, name string) error {
 	if err != nil {
 		return cerror.WrapError(cerror.ErrRedoFileOp, err)
 	}
-
+	err = w.storage.WriteFile(ctx, filepath.Base(name), fileData)
+	log.Warn("[redo] write data to s3", zap.String("path", filepath.Base(name)))
 	// Key in s3: aws.String(rs.options.Prefix + name), prefix should be changefeed name
-	return cerror.WrapError(cerror.ErrS3StorageAPI, w.storage.WriteFile(ctx, filepath.Base(name), fileData))
+	return cerror.WrapError(cerror.ErrS3StorageAPI, err)
 }
