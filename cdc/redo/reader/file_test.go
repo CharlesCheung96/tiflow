@@ -14,15 +14,23 @@
 package reader
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pingcap/log"
+	"github.com/pingcap/tiflow/cdc/redo/common"
 	"github.com/pingcap/tiflow/pkg/redo"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestReaderNewReader(t *testing.T) {
@@ -75,5 +83,82 @@ func TestFileReaderRead(t *testing.T) {
 		require.Nil(t, log)
 		require.ErrorIs(t, err, io.EOF)
 		require.NoError(t, r.Close())
+	}
+}
+
+func TestDecodeLog(t *testing.T) {
+	dir := "./log"
+	files, _ := ioutil.ReadDir(dir)
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), redo.LogEXT) &&
+			!strings.HasSuffix(file.Name(), redo.TmpEXT) {
+			continue
+		}
+
+		f, err := os.Open(filepath.Join(dir, file.Name()))
+		fmt.Printf("handling %v...", file.Name())
+		if err != nil {
+			log.Panic("", zap.Error(err))
+		}
+
+		result := make([]byte, 0)
+		r := &reader{
+			br:       bufio.NewReader(f),
+			fileName: file.Name(),
+			closer:   f,
+		}
+		defer r.Close()
+
+		for {
+			rl, err := r.Read()
+			if err != nil {
+				if err != io.EOF {
+					log.Panic("", zap.Error(err))
+				}
+				break
+			}
+			rb, err := json.Marshal(rl)
+			if err != nil {
+				log.Panic("", zap.Error(err))
+			}
+			result = append(result, rb...)
+			result = append(result, byte(','), byte('\n'))
+		}
+
+		outPath := filepath.Join(dir, file.Name()+".json")
+		err = ioutil.WriteFile(outPath, result, 0644)
+		if err != nil {
+			log.Panic("", zap.Error(err))
+		}
+	}
+}
+
+func TestDecodeMeta(t *testing.T) {
+	dir := "./log"
+	files, _ := ioutil.ReadDir(dir)
+	for _, file := range files {
+		if !strings.HasSuffix(file.Name(), redo.MetaEXT) {
+			continue
+		}
+
+		f, err := os.Open(filepath.Join(dir, file.Name()))
+		fmt.Printf("handling %v...", file.Name())
+		if err != nil {
+			log.Panic("", zap.Error(err))
+		}
+
+		meta := &common.LogMeta{}
+		data, _ := os.ReadFile(f.Name())
+		_, err = meta.UnmarshalMsg(data)
+		if err != nil {
+			log.Panic("")
+		}
+		result, _ := json.Marshal(meta)
+
+		outPath := filepath.Join(dir, file.Name()+".json")
+		err = ioutil.WriteFile(outPath, result, 0644)
+		if err != nil {
+			log.Panic("", zap.Error(err))
+		}
 	}
 }

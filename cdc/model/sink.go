@@ -253,9 +253,9 @@ const (
 // more info https://github.com/tinylib/msgp/issues/158, https://github.com/tinylib/msgp/issues/149
 // so define a RedoColumn, RedoDDLEvent instead of using the Column, DDLEvent
 type RedoLog struct {
-	RedoRow RedoRowChangedEvent `msg:"row"`
-	RedoDDL RedoDDLEvent        `msg:"ddl"`
-	Type    RedoLogType         `msg:"type"`
+	RedoRow RedoRowChangedEvent `json:"row" msg:"row"`
+	RedoDDL RedoDDLEvent        `json:"ddl" msg:"ddl"`
+	Type    RedoLogType         `json:"type" msg:"type"`
 }
 
 // GetCommitTs returns the commit ts of the redo log.
@@ -278,9 +278,9 @@ func (r *RedoLog) TrySplitAndSortUpdateEvent(_ string) error {
 
 // RedoRowChangedEvent represents the DML event used in RedoLog
 type RedoRowChangedEvent struct {
-	Row        *RowChangedEvent `msg:"row"`
-	Columns    []RedoColumn     `msg:"columns"`
-	PreColumns []RedoColumn     `msg:"pre-columns"`
+	Row        *RowChangedEvent `json:"type" msg:"type"`
+	Columns    []RedoColumn     `json:"columns" msg:"columns"`
+	PreColumns []RedoColumn     `json:"pre-columns" msg:"pre-columns"`
 }
 
 // RedoDDLEvent represents DDL event used in redo log persistent
@@ -524,10 +524,10 @@ type Column struct {
 // RedoColumn stores Column change
 type RedoColumn struct {
 	// Fields from Column and can't be marshaled directly in Column.
-	Value interface{} `msg:"column"`
+	Value interface{} `json:"column" msg:"column"`
 	// msgp transforms empty byte slice into nil, PTAL msgp#247.
-	ValueIsEmptyBytes bool   `msg:"value-is-empty-bytes"`
-	Flag              uint64 `msg:"flag"`
+	ValueIsEmptyBytes bool   `json:"value-is-empty-bytes" msg:"value-is-empty-bytes"`
+	Flag              uint64 `json:"flag" msg:"flag"`
 }
 
 // BuildTiDBTableInfo builds a TiDB TableInfo from given information.
