@@ -75,7 +75,7 @@ var (
 	initLock   sync.Mutex
 )
 
-var redoLogPool = sync.Pool{
+var RedoLogPool = sync.Pool{
 	New: func() interface{} {
 		return &model.RedoLog{}
 	},
@@ -325,7 +325,7 @@ func (l *LogWriter) WriteLog(ctx context.Context, tableID int64, rows []*model.R
 			continue
 		}
 
-		rl := redoLogPool.Get().(*model.RedoLog)
+		rl := RedoLogPool.Get().(*model.RedoLog)
 		rl.RedoRow = r
 		rl.RedoDDL = nil
 		rl.Type = model.RedoLogTypeRow
@@ -344,7 +344,7 @@ func (l *LogWriter) WriteLog(ctx context.Context, tableID int64, rows []*model.R
 		}
 
 		maxCommitTs = l.setMaxCommitTs(tableID, r.Row.CommitTs)
-		redoLogPool.Put(rl)
+		RedoLogPool.Put(rl)
 	}
 	l.metricTotalRowsCount.Add(float64(len(rows)))
 	return maxCommitTs, nil
@@ -365,8 +365,8 @@ func (l *LogWriter) SendDDL(ctx context.Context, ddl *model.RedoDDLEvent) error 
 		return nil
 	}
 
-	rl := redoLogPool.Get().(*model.RedoLog)
-	defer redoLogPool.Put(rl)
+	rl := RedoLogPool.Get().(*model.RedoLog)
+	defer RedoLogPool.Put(rl)
 
 	rl.RedoDDL = ddl
 	rl.RedoRow = nil
@@ -393,6 +393,9 @@ func (l *LogWriter) FlushLog(ctx context.Context, tableID int64, ts uint64) erro
 		return cerror.ErrRedoWriterStopped.GenWithStackByArgs()
 	}
 
+	log.Warn("[redo] flush log to table",
+		zap.Int64("TableID", tableID),
+		zap.Uint64("ResolvedTs", ts))
 	if err := l.flush(); err != nil {
 		return err
 	}
@@ -573,6 +576,11 @@ func (l *LogWriter) setMaxCommitTs(tableID int64, commitTs uint64) uint64 {
 	if v, ok := l.meta.ResolvedTsList[tableID]; ok {
 		if v < commitTs {
 			l.meta.ResolvedTsList[tableID] = commitTs
+		} else if v > commitTs {
+			log.Error("[redo] commitTs fallback",
+				zap.Int64("TableID", tableID),
+				zap.Uint64("curCommitTs", commitTs),
+				zap.Uint64("maxCommitTs", v))
 		}
 	} else {
 		l.meta.ResolvedTsList[tableID] = commitTs

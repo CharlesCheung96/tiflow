@@ -402,6 +402,14 @@ func (m *ManagerImpl) bgWriteLog(ctx context.Context, errCh chan<- error) {
 		case cache := <-m.logBuffer:
 			logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
 			for _, row := range cache.rows {
+				if row == nil || row.Table == nil {
+					log.Error("[redo] get nil row in manager")
+				}
+				log.Warn("[redo] get row from manager cache",
+					zap.Int64("TableID", row.Table.TableID),
+					zap.String("TableName", row.Table.Table),
+					zap.Uint64("TxnID", row.StartTs),
+					zap.Any("RowID", row.RowID))
 				logs = append(logs, RowToRedo(row))
 			}
 			_, err := m.writer.WriteLog(ctx, cache.tableID, logs)
