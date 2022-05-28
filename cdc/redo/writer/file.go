@@ -582,6 +582,8 @@ func (w *Writer) flushAll() error {
 	if err != nil {
 		return err
 	}
+	log.Warn("[redo] flush data to local",
+		zap.String("FileName", w.file.Name()))
 	if !w.cfg.S3Storage {
 		return nil
 	}

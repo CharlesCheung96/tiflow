@@ -393,7 +393,7 @@ func (l *LogWriter) FlushLog(ctx context.Context, tableID int64, ts uint64) erro
 		return cerror.ErrRedoWriterStopped.GenWithStackByArgs()
 	}
 
-	log.Warn("[redo] flush log to table",
+	log.Warn("[redo] flush log by table",
 		zap.Int64("TableID", tableID),
 		zap.Uint64("ResolvedTs", ts))
 	if err := l.flush(); err != nil {
