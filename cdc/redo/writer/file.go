@@ -262,33 +262,6 @@ func (w *Writer) Write(rawData []byte) (int, error) {
 	w.metricWriteBytes.Add(float64(n))
 	w.size += int64(n)
 
-	rl := RedoLogPool.Get().(*model.RedoLog)
-	defer RedoLogPool.Put(rl)
-	_, err1 := rl.UnmarshalMsg(rawData)
-	if err1 != nil {
-		switch rl.Type {
-		case model.RedoLogTypeRow:
-			if rl.RedoRow != nil && rl.RedoRow.Row != nil && rl.RedoRow.Row.Table != nil {
-				log.Warn("[redo] write dml to local",
-					zap.Int64("TableID", rl.RedoRow.Row.Table.TableID),
-					zap.String("TableName", rl.RedoRow.Row.Table.Table),
-					zap.Uint64("TxnID", rl.RedoRow.Row.StartTs),
-					zap.Uint64("TxnID", rl.RedoRow.Row.CommitTs),
-					zap.String("FilePath", w.file.Name()))
-			}
-		case model.RedoLogTypeDDL:
-			if rl.RedoDDL != nil && rl.RedoDDL.DDL != nil && rl.RedoDDL.DDL.TableInfo != nil {
-				log.Warn("[redo] write ddl to local",
-					zap.Int64("TableID", rl.RedoDDL.DDL.TableInfo.TableID),
-					zap.String("TableName", rl.RedoDDL.DDL.TableInfo.Table),
-					zap.Uint64("TxnID", rl.RedoDDL.DDL.StartTs),
-					zap.Uint64("TxnID", rl.RedoDDL.DDL.CommitTs),
-					zap.String("FilePath", w.file.Name()))
-			}
-		default:
-		}
-	}
-
 	return n, err
 }
 

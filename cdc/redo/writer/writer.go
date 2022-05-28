@@ -338,6 +338,20 @@ func (l *LogWriter) WriteLog(ctx context.Context, tableID int64, rows []*model.R
 
 		l.rowWriter.AdvanceTs(r.Row.CommitTs)
 		_, err = l.rowWriter.Write(data)
+
+		if rl.RedoRow != nil && rl.RedoRow.Row != nil && rl.RedoRow.Row.Table != nil {
+			var path string
+			if v, ok := l.rowWriter.(*Writer); ok {
+				path = v.file.Name()
+			}
+
+			log.Warn("[redo] write dml to local",
+				zap.Int64("TableID", rl.RedoRow.Row.Table.TableID),
+				zap.String("TableName", rl.RedoRow.Row.Table.Table),
+				zap.Uint64("TxnID", rl.RedoRow.Row.StartTs),
+				zap.Uint64("TxnID", rl.RedoRow.Row.CommitTs),
+				zap.String("FilePath", path))
+		}
 		if err != nil {
 			l.metricTotalRowsCount.Add(float64(i))
 			return maxCommitTs, err
@@ -576,11 +590,6 @@ func (l *LogWriter) setMaxCommitTs(tableID int64, commitTs uint64) uint64 {
 	if v, ok := l.meta.ResolvedTsList[tableID]; ok {
 		if v < commitTs {
 			l.meta.ResolvedTsList[tableID] = commitTs
-		} else if v > commitTs {
-			log.Error("[redo] commitTs fallback",
-				zap.Int64("TableID", tableID),
-				zap.Uint64("curCommitTs", commitTs),
-				zap.Uint64("maxCommitTs", v))
 		}
 	} else {
 		l.meta.ResolvedTsList[tableID] = commitTs
