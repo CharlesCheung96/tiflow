@@ -110,10 +110,9 @@ func (m *mailbox[T]) ID() ID {
 }
 
 func (m *mailbox[T]) Send(msg message.Message[T]) error {
-	if atomic.LoadUint64(&m.state) == mailboxStateClosed {
-		return errActorStopped
-	}
 	select {
+	case <-m.closeCh:
+		return errActorStopped
 	case m.msgCh <- msg:
 		return nil
 	default:
