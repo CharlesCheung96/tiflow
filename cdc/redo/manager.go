@@ -119,14 +119,10 @@ type ManagerOptions struct {
 	ErrCh          chan<- error
 }
 
-type cacheRows struct {
-	tableID model.TableID
-	rows    []*model.RowChangedEvent
-	// When calling FlushLog for a table, we must ensure that all data of this
-	// table has been written to underlying writer. Since the EmitRowChangedEvents
-	// and FlushLog of the same table can't be executed concurrently, we can
-	// insert a simple barrier data into data stream to achieve this goal.
-	flushCallback chan struct{}
+type cacheEvents struct {
+	tableID  model.TableID
+	rows     []*model.RowChangedEvent
+	resolved model.ResolvedTs
 }
 
 // ManagerImpl manages redo log writer, buffers un-persistent redo logs, calculates
@@ -136,7 +132,7 @@ type ManagerImpl struct {
 	level       ConsistentLevelType
 	storageType consistentStorage
 
-	logBuffer chan cacheRows
+	logBuffer []cacheEvents
 	writer    writer.RedoLogWriter
 
 	minResolvedTs uint64
@@ -163,7 +159,7 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 		level:       ConsistentLevelType(cfg.Level),
 		storageType: consistentStorage(uri.Scheme),
 		rtsMap:      make(map[model.TableID]uint64),
-		logBuffer:   make(chan cacheRows, logBufferChanSize),
+		logBuffer:   make(chan cacheEvents, logBufferChanSize),
 	}
 
 	switch m.storageType {
@@ -238,7 +234,7 @@ func (m *ManagerImpl) TryEmitRowChangedEvents(
 	select {
 	case <-ctx.Done():
 		return false, ctx.Err()
-	case m.logBuffer <- cacheRows{
+	case m.logBuffer <- cacheEvents{
 		tableID: tableID,
 		// Because the pipeline sink doesn't hold slice memory after calling
 		// EmitRowChangedEvents, we copy to a new slice to manage memory
@@ -273,7 +269,7 @@ func (m *ManagerImpl) EmitRowChangedEvents(
 		return nil
 	case <-timer.C:
 		return cerror.ErrBufferLogTimeout.GenWithStackByArgs()
-	case m.logBuffer <- cacheRows{
+	case m.logBuffer <- cacheEvents{
 		tableID: tableID,
 		// Because the pipeline sink doesn't hold slice memory after calling
 		// EmitRowChangedEvents, we copy to a new slice to manage memory
@@ -299,7 +295,7 @@ func (m *ManagerImpl) FlushLog(
 	// Adding a barrier to data stream, to ensure all logs of this table has been
 	// written to underlying writer.
 	flushCallbackCh := make(chan struct{})
-	m.logBuffer <- cacheRows{
+	m.logBuffer <- cacheEvents{
 		tableID:       tableID,
 		flushCallback: flushCallbackCh,
 	}
