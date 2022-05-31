@@ -26,7 +26,7 @@ A record has a length field and a logical Log data. The length field is a 64-bit
 56 bits and its physical padding in the first three bits of the most significant byte. Each record is 8-byte aligned so that the length field is never torn.
 
 When apply redo log from cli, will select files in the specific dir to open base on the startTs, endTs send from cli or download logs from s3 first is enabled,
-then sort the event records in each file base on commitTs, after sorted, the new sort file name should be as CaptureID_ChangeFeedID_CreateTime_FileType_MaxCommitTSOfAllEventInTheFile.log.sort.
+then sort the event records in each file base on commitTs and startTs, after sorted, the new sort file name should be as CaptureID_ChangeFeedID_CreateTime_FileType_MaxCommitTSOfAllEventInTheFile.log.sort.
 
 */
 package redo

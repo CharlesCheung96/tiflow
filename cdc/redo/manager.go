@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/redo/writer"
 	"github.com/pingcap/tiflow/pkg/config"
+	"github.com/pingcap/tiflow/pkg/containers"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -97,16 +98,15 @@ type LogManager interface {
 	Enabled() bool
 
 	// The following 6 APIs are called from processor only
-	TryEmitRowChangedEvents(ctx context.Context, tableID model.TableID, rows ...*model.RowChangedEvent) (bool, error)
+	FlushResolvedAndCheckpointTs(ctx context.Context, resolvedTs, checkpointTs uint64) (err error)
 	EmitRowChangedEvents(ctx context.Context, tableID model.TableID, rows ...*model.RowChangedEvent) error
 	FlushLog(ctx context.Context, tableID model.TableID, resolvedTs uint64) error
 	AddTable(tableID model.TableID, startTs uint64)
 	RemoveTable(tableID model.TableID)
 	GetMinResolvedTs() uint64
 
-	// EmitDDLEvent and FlushResolvedAndCheckpointTs are called from owner only
+	// EmitDDLEvent are called from owner only
 	EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error
-	FlushResolvedAndCheckpointTs(ctx context.Context, resolvedTs, checkpointTs uint64) (err error)
 
 	// Cleanup removes all redo logs
 	Cleanup(ctx context.Context) error
@@ -119,14 +119,10 @@ type ManagerOptions struct {
 	ErrCh          chan<- error
 }
 
-type cacheRows struct {
-	tableID model.TableID
-	rows    []*model.RowChangedEvent
-	// When calling FlushLog for a table, we must ensure that all data of this
-	// table has been written to underlying writer. Since the EmitRowChangedEvents
-	// and FlushLog of the same table can't be executed concurrently, we can
-	// insert a simple barrier data into data stream to achieve this goal.
-	flushCallback chan struct{}
+type cacheEvents struct {
+	tableID    model.TableID
+	rows       []*model.RowChangedEvent
+	resolvedTs model.Ts
 }
 
 // ManagerImpl manages redo log writer, buffers un-persistent redo logs, calculates
@@ -136,16 +132,14 @@ type ManagerImpl struct {
 	level       ConsistentLevelType
 	storageType consistentStorage
 
-	logBuffer chan cacheRows
 	writer    writer.RedoLogWriter
+	logBuffer *containers.Deque[cacheEvents]
+	updateCh  chan struct{}
 
 	minResolvedTs uint64
 	tableIDs      []model.TableID
 	rtsMap        map[model.TableID]uint64
 	rtsMapMu      sync.RWMutex
-
-	// record whether there exists a table being flushing resolved ts
-	flushing int64
 }
 
 // NewManager creates a new Manager
@@ -163,7 +157,8 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 		level:       ConsistentLevelType(cfg.Level),
 		storageType: consistentStorage(uri.Scheme),
 		rtsMap:      make(map[model.TableID]uint64),
-		logBuffer:   make(chan cacheRows, logBufferChanSize),
+		logBuffer:   containers.NewDeque[cacheEvents](),
+		updateCh:    make(chan struct{}, 1),
 	}
 
 	switch m.storageType {
@@ -210,7 +205,7 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 
 	if opts.EnableBgRunner {
 		go m.bgUpdateResolvedTs(ctx, opts.ErrCh)
-		go m.bgWriteLog(ctx, opts.ErrCh)
+		go m.bgUpdateLog(ctx, opts.ErrCh)
 	}
 	return m, nil
 }
@@ -223,32 +218,6 @@ func NewDisabledManager() *ManagerImpl {
 // Enabled returns whether this log manager is enabled
 func (m *ManagerImpl) Enabled() bool {
 	return m.enabled
-}
-
-// TryEmitRowChangedEvents sends row changed events to a log buffer, the log buffer
-// will be consumed by a background goroutine, which converts row changed events
-// to redo logs and sends to log writer. Note this function is non-blocking
-func (m *ManagerImpl) TryEmitRowChangedEvents(
-	ctx context.Context,
-	tableID model.TableID,
-	rows ...*model.RowChangedEvent,
-) (bool, error) {
-	timer := time.NewTimer(logBufferTimeout)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false, ctx.Err()
-	case m.logBuffer <- cacheRows{
-		tableID: tableID,
-		// Because the pipeline sink doesn't hold slice memory after calling
-		// EmitRowChangedEvents, we copy to a new slice to manage memory
-		// in redo manager itself, which is the same behavior as sink manager.
-		rows: append(make([]*model.RowChangedEvent, 0, len(rows)), rows...),
-	}:
-		return true, nil
-	default:
-		return false, nil
-	}
 }
 
 // EmitRowChangedEvents sends row changed events to a log buffer, the log buffer
@@ -266,21 +235,18 @@ func (m *ManagerImpl) EmitRowChangedEvents(
 	tableID model.TableID,
 	rows ...*model.RowChangedEvent,
 ) error {
-	timer := time.NewTimer(logBufferTimeout)
-	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return nil
-	case <-timer.C:
-		return cerror.ErrBufferLogTimeout.GenWithStackByArgs()
-	case m.logBuffer <- cacheRows{
-		tableID: tableID,
-		// Because the pipeline sink doesn't hold slice memory after calling
-		// EmitRowChangedEvents, we copy to a new slice to manage memory
-		// in redo manager itself, which is the same behavior as sink manager.
-		rows: append(make([]*model.RowChangedEvent, 0, len(rows)), rows...),
-	}:
+	case m.updateCh <- struct{}{}:
+	default:
 	}
+
+	m.logBuffer.Push(cacheEvents{
+		tableID: tableID,
+		// TODO: should copy to a new slice?
+		rows: rows,
+	})
 	return nil
 }
 
@@ -290,26 +256,18 @@ func (m *ManagerImpl) FlushLog(
 	tableID model.TableID,
 	resolvedTs uint64,
 ) error {
-	// Use flushing as a lightweight lock to reduce log contention in log writer.
-	if !atomic.CompareAndSwapInt64(&m.flushing, 0, 1) {
-		return nil
-	}
-	defer atomic.StoreInt64(&m.flushing, 0)
-
-	// Adding a barrier to data stream, to ensure all logs of this table has been
-	// written to underlying writer.
-	flushCallbackCh := make(chan struct{})
-	m.logBuffer <- cacheRows{
-		tableID:       tableID,
-		flushCallback: flushCallbackCh,
-	}
 	select {
 	case <-ctx.Done():
 		return errors.Trace(ctx.Err())
-	case <-flushCallbackCh:
+	case m.updateCh <- struct{}{}:
+	default:
 	}
 
-	return m.writer.FlushLog(ctx, tableID, resolvedTs)
+	m.logBuffer.Push(cacheEvents{
+		tableID:    tableID,
+		resolvedTs: resolvedTs,
+	})
+	return nil
 }
 
 // EmitDDLEvent sends DDL event to redo log writer
@@ -417,21 +375,34 @@ func (m *ManagerImpl) bgUpdateResolvedTs(ctx context.Context, errCh chan<- error
 	}
 }
 
-func (m *ManagerImpl) bgWriteLog(ctx context.Context, errCh chan<- error) {
+func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
+	var (
+		cache cacheEvents
+		ok    bool
+		err   error
+	)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case cache := <-m.logBuffer:
-			if cache.flushCallback != nil {
-				close(cache.flushCallback)
-				continue
+		case <-m.updateCh:
+		}
+		for {
+			if cache, ok = m.logBuffer.Pop(); !ok {
+				break
 			}
-			logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
-			for _, row := range cache.rows {
-				logs = append(logs, RowToRedo(row))
+			if cache.rows != nil {
+				logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
+				for _, row := range cache.rows {
+					logs = append(logs, RowToRedo(row))
+				}
+				_, err = m.writer.WriteLog(ctx, cache.tableID, logs)
+			} else {
+				// handle resolved ts
+				err = m.writer.FlushLog(ctx, cache.tableID, cache.resolvedTs)
+				_ = err
 			}
-			_, err := m.writer.WriteLog(ctx, cache.tableID, logs)
+
 			if err != nil {
 				select {
 				case errCh <- err:
