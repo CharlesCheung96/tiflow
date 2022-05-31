@@ -31,6 +31,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
+	"golang.design/x/chann"
 )
 
 var updateRtsInterval = time.Second
@@ -132,7 +133,7 @@ type ManagerImpl struct {
 	storageType consistentStorage
 
 	writer    writer.RedoLogWriter
-	logBuffer chan cacheEvents
+	logBuffer *chann.Chann[cacheEvents]
 
 	minResolvedTs uint64
 	tableIDs      []model.TableID
@@ -155,7 +156,7 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 		level:       ConsistentLevelType(cfg.Level),
 		storageType: consistentStorage(uri.Scheme),
 		rtsMap:      make(map[model.TableID]uint64),
-		logBuffer:   make(chan cacheEvents, logBufferChanSize),
+		logBuffer:   chann.New[cacheEvents](),
 	}
 
 	switch m.storageType {
@@ -235,7 +236,7 @@ func (m *ManagerImpl) EmitRowChangedEvents(
 	select {
 	case <-ctx.Done():
 		return nil
-	case m.logBuffer <- cacheEvents{
+	case m.logBuffer.In() <- cacheEvents{
 		tableID: tableID,
 		// TODO: should copy to a new slice?
 		rows: rows,
@@ -256,7 +257,7 @@ func (m *ManagerImpl) FlushLog(
 	select {
 	case <-ctx.Done():
 		return errors.Trace(ctx.Err())
-	case m.logBuffer <- cacheEvents{
+	case m.logBuffer.In() <- cacheEvents{
 		tableID:    tableID,
 		resolvedTs: resolvedTs,
 	}:
@@ -381,7 +382,7 @@ func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 		select {
 		case <-ctx.Done():
 			return
-		case cache = <-m.logBuffer:
+		case cache = <-m.logBuffer.Out():
 		}
 
 		if cache.rows != nil {
