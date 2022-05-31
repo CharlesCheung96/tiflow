@@ -347,10 +347,32 @@ func TestWriteLogFlushLogSequence(t *testing.T) {
 	wg.Wait()
 }
 
-func BenchmarkSorter(b *testing.B) {
+func BenchmarkRedoManager(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	runBenchTest(b, ctx)
+}
 
+func BenchmarkRedoManagerWaitFlush(b *testing.B) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	logMgr, maxTsMap := runBenchTest(b, ctx)
+
+	var minResolvedTs model.Ts = math.MaxUint64
+	for _, tp := range maxTsMap {
+		if *tp < minResolvedTs {
+			minResolvedTs = *tp
+		}
+	}
+
+	for t := logMgr.GetMinResolvedTs(); t != minResolvedTs; {
+		time.Sleep(time.Millisecond * 200)
+		log.Debug("", zap.Uint64("targetTs", minResolvedTs), zap.Uint64("minResolvedTs", t))
+		t = logMgr.GetMinResolvedTs()
+	}
+}
+
+func runBenchTest(b *testing.B, ctx context.Context) (LogManager, map[model.TableID]*model.Ts) {
 	cfg := &config.ConsistentConfig{
 		Level:   string(ConsistentLevelEventual),
 		Storage: "blackhole://",
@@ -410,18 +432,5 @@ func BenchmarkSorter(b *testing.B) {
 		log.Panic("", zap.Error(err))
 	default:
 	}
-
-	var minResolvedTs model.Ts = math.MaxUint64
-	for _, tp := range maxTsMap {
-		if *tp < minResolvedTs {
-			minResolvedTs = *tp
-		}
-	}
-
-	updateRtsInterval = time.Millisecond * 200
-	for t := logMgr.GetMinResolvedTs(); t != minResolvedTs; {
-		time.Sleep(updateRtsInterval * 2)
-		log.Warn("", zap.Uint64("targetTs", minResolvedTs), zap.Uint64("minResolvedTs", t))
-		t = logMgr.GetMinResolvedTs()
-	}
+	return logMgr, maxTsMap
 }
