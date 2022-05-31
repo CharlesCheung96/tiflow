@@ -29,7 +29,6 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/redo/writer"
 	"github.com/pingcap/tiflow/pkg/config"
-	"github.com/pingcap/tiflow/pkg/containers"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -57,7 +56,7 @@ const (
 
 const (
 	// supposing to replicate 10k tables, each table has one cached changce averagely.
-	logBufferChanSize = 10000
+	logBufferChanSize = 10000000
 	logBufferTimeout  = time.Minute * 10
 )
 
@@ -133,8 +132,7 @@ type ManagerImpl struct {
 	storageType consistentStorage
 
 	writer    writer.RedoLogWriter
-	logBuffer *containers.Deque[cacheEvents]
-	updateCh  chan struct{}
+	logBuffer chan cacheEvents
 
 	minResolvedTs uint64
 	tableIDs      []model.TableID
@@ -157,8 +155,7 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 		level:       ConsistentLevelType(cfg.Level),
 		storageType: consistentStorage(uri.Scheme),
 		rtsMap:      make(map[model.TableID]uint64),
-		logBuffer:   containers.NewDeque[cacheEvents](),
-		updateCh:    make(chan struct{}, 1),
+		logBuffer:   make(chan cacheEvents, logBufferChanSize),
 	}
 
 	switch m.storageType {
@@ -238,15 +235,15 @@ func (m *ManagerImpl) EmitRowChangedEvents(
 	select {
 	case <-ctx.Done():
 		return nil
-	case m.updateCh <- struct{}{}:
-	default:
-	}
-
-	m.logBuffer.Push(cacheEvents{
+	case m.logBuffer <- cacheEvents{
 		tableID: tableID,
 		// TODO: should copy to a new slice?
 		rows: rows,
-	})
+	}:
+	default:
+		return cerror.ErrBufferLogTimeout.GenWithStackByArgs(tableID)
+	}
+
 	return nil
 }
 
@@ -259,14 +256,14 @@ func (m *ManagerImpl) FlushLog(
 	select {
 	case <-ctx.Done():
 		return errors.Trace(ctx.Err())
-	case m.updateCh <- struct{}{}:
-	default:
-	}
-
-	m.logBuffer.Push(cacheEvents{
+	case m.logBuffer <- cacheEvents{
 		tableID:    tableID,
 		resolvedTs: resolvedTs,
-	})
+	}:
+	default:
+		return cerror.ErrBufferLogTimeout.GenWithStackByArgs(tableID)
+	}
+
 	return nil
 }
 
@@ -378,39 +375,34 @@ func (m *ManagerImpl) bgUpdateResolvedTs(ctx context.Context, errCh chan<- error
 func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 	var (
 		cache cacheEvents
-		ok    bool
 		err   error
 	)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-m.updateCh:
+		case cache = <-m.logBuffer:
 		}
-		for {
-			if cache, ok = m.logBuffer.Pop(); !ok {
-				break
-			}
-			if cache.rows != nil {
-				logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
-				for _, row := range cache.rows {
-					logs = append(logs, RowToRedo(row))
-				}
-				_, err = m.writer.WriteLog(ctx, cache.tableID, logs)
-			} else {
-				// handle resolved ts
-				err = m.writer.FlushLog(ctx, cache.tableID, cache.resolvedTs)
-				_ = err
-			}
 
-			if err != nil {
-				select {
-				case errCh <- err:
-				default:
-					log.Error("err channel is full", zap.Error(err))
-				}
-				return
+		if cache.rows != nil {
+			logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
+			for _, row := range cache.rows {
+				logs = append(logs, RowToRedo(row))
 			}
+			_, err = m.writer.WriteLog(ctx, cache.tableID, logs)
+		} else {
+			// handle resolved ts
+			err = m.writer.FlushLog(ctx, cache.tableID, cache.resolvedTs)
+			_ = err
+		}
+
+		if err != nil {
+			select {
+			case errCh <- err:
+			default:
+				log.Error("err channel is full", zap.Error(err))
+			}
+			return
 		}
 	}
 }
