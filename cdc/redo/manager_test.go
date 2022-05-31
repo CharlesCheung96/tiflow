@@ -15,12 +15,12 @@ package redo
 
 import (
 	"context"
-	"log"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/stretchr/testify/require"
@@ -363,35 +363,39 @@ func BenchmarkSorter(b *testing.B) {
 	require.Nil(b, err)
 
 	// Init tables
-	numOfTables := 1000
+	numOfTables := 200
 	tables := make([]model.TableID, 0, numOfTables)
+	maxTsMap := make(map[model.TableID]*model.Ts, numOfTables)
 	startTs := uint64(100)
 	for i := 0; i < numOfTables; i++ {
 		tableID := model.TableID(i)
 		tables = append(tables, tableID)
+		ts := startTs
+		maxTsMap[tableID] = &ts
 		logMgr.AddTable(tableID, startTs)
 	}
 
-	// maxRowCount := 1000
+	maxRowCount := 100000
 	wg := sync.WaitGroup{}
 	b.ResetTimer()
 	for _, tableID := range tables {
 		wg.Add(1)
 		go func(tableID model.TableID) {
 			defer wg.Done()
-			maxCommitTs := startTs
+			maxCommitTs := maxTsMap[tableID]
 			rows := []*model.RowChangedEvent{}
-			for i := 0; i < b.N; i++ {
+			for i := 0; i < maxRowCount; i++ {
 				if i%100 == 0 {
-					logMgr.FlushLog(ctx, tableID, maxCommitTs)
+					logMgr.FlushLog(ctx, tableID, *maxCommitTs)
 					// prepare new row change events
 					b.StopTimer()
-					maxCommitTs += rand.Uint64() % 10
+					*maxCommitTs += rand.Uint64() % 10
 					rows = []*model.RowChangedEvent{
-						{CommitTs: maxCommitTs, Table: &model.TableName{TableID: tableID}},
-						{CommitTs: maxCommitTs, Table: &model.TableName{TableID: tableID}},
-						{CommitTs: maxCommitTs, Table: &model.TableName{TableID: tableID}},
+						{CommitTs: *maxCommitTs, Table: &model.TableName{TableID: tableID}},
+						{CommitTs: *maxCommitTs, Table: &model.TableName{TableID: tableID}},
+						{CommitTs: *maxCommitTs, Table: &model.TableName{TableID: tableID}},
 					}
+
 					b.StartTimer()
 				}
 				logMgr.EmitRowChangedEvents(ctx, tableID, rows...)
@@ -405,4 +409,18 @@ func BenchmarkSorter(b *testing.B) {
 		log.Panic("", zap.Error(err))
 	default:
 	}
+
+	// var minResolvedTs model.Ts = math.MaxUint64
+	// for _, tp := range maxTsMap {
+	// 	if *tp < minResolvedTs {
+	// 		minResolvedTs = *tp
+	// 	}
+	// }
+
+	// updateRtsInterval = time.Millisecond * 200
+	// for t := logMgr.GetMinResolvedTs(); t != minResolvedTs; {
+	// 	time.Sleep(updateRtsInterval * 2)
+	// 	// log.Warn("", zap.Uint64("targetTs", minResolvedTs), zap.Uint64("minResolvedTs", t))
+	// 	t = logMgr.GetMinResolvedTs()
+	// }
 }
