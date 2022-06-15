@@ -56,7 +56,7 @@ const (
 
 const (
 	// supposing to replicate 10k tables, each table has one cached changce averagely.
-	logBufferChanSize = 10000
+	logBufferChanSize = 1000000
 	logBufferTimeout  = time.Minute * 10
 )
 
@@ -127,6 +127,7 @@ type cacheRows struct {
 	// and FlushLog of the same table can't be executed concurrently, we can
 	// insert a simple barrier data into data stream to achieve this goal.
 	flushCallback chan struct{}
+	resolvedTs    model.Ts
 }
 
 // ManagerImpl manages redo log writer, buffers un-persistent redo logs, calculates
@@ -302,6 +303,7 @@ func (m *ManagerImpl) FlushLog(
 	m.logBuffer <- cacheRows{
 		tableID:       tableID,
 		flushCallback: flushCallbackCh,
+		resolvedTs:    resolvedTs,
 	}
 	select {
 	case <-ctx.Done():
@@ -309,7 +311,7 @@ func (m *ManagerImpl) FlushLog(
 	case <-flushCallbackCh:
 	}
 
-	return m.writer.FlushLog(ctx, tableID, resolvedTs)
+	return nil
 }
 
 // EmitDDLEvent sends DDL event to redo log writer
@@ -424,7 +426,16 @@ func (m *ManagerImpl) bgWriteLog(ctx context.Context, errCh chan<- error) {
 			return
 		case cache := <-m.logBuffer:
 			if cache.flushCallback != nil {
+				err := m.writer.FlushLog(ctx, cache.tableID, cache.resolvedTs)
 				close(cache.flushCallback)
+				if err != nil {
+					select {
+					case errCh <- err:
+					default:
+						log.Error("err channel is full", zap.Error(err))
+					}
+					return
+				}
 				continue
 			}
 			logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
