@@ -139,7 +139,7 @@ func (n *sorterNode) start(
 		return nil
 	})
 	n.eg.Go(func() error {
-		lastSentResolvedTs := uint64(0)
+		lastSentResolvedTs := n.resolvedTs   // startTs
 		lastSendResolvedTsTime := time.Now() // the time at which we last sent a resolved-ts.
 		lastCRTs := uint64(0)                // the commit-ts of the last row changed we sent.
 

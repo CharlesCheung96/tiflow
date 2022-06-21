@@ -72,6 +72,7 @@ type sinkNode struct {
 	checkpointTs atomic.Value
 	targetTs     model.Ts
 	barrierTs    model.Ts
+	startTs      model.Ts
 
 	flowController tableFlowController
 	redoManager    redo.LogManager
@@ -91,6 +92,7 @@ func newSinkNode(
 		status:         TableStatusInitializing,
 		targetTs:       targetTs,
 		barrierTs:      startTs,
+		startTs:        startTs,
 		flowController: flowController,
 		redoManager:    redoManager,
 	}
@@ -143,6 +145,10 @@ func (n *sinkNode) flushSink(ctx context.Context, resolved model.ResolvedTs) (er
 			err = n.stop(ctx)
 		}
 	}()
+
+	log.Warn("[sinkNode]flush sink",
+		zap.Int64("tableID", n.tableID),
+		zap.Any("resolvedTs", resolved))
 
 	// flush redo log
 	currentBarrierTs := atomic.LoadUint64(&n.barrierTs)
@@ -330,7 +336,20 @@ func (n *sinkNode) HandleMessage(ctx context.Context, msg pmessage.Message) (boo
 
 			resolved := model.NewResolvedTs(event.CRTs)
 			if event.Resolved != nil {
+				if event.Resolved.Ts != event.CRTs {
+					log.Panic("resolved ts should equal to crts",
+						zap.Any("resolved", event.Resolved),
+						zap.Uint64("crts", event.CRTs),
+						zap.Uint64("startTs", n.startTs))
+				}
 				resolved = *(event.Resolved)
+			}
+
+			if resolved.Ts < n.ResolvedTs() {
+				log.Panic("resolved ts regressed in sinkNode",
+					zap.Any("resolved", resolved),
+					zap.Any("old", n.getResolvedTs()),
+					zap.Uint64("startTs", n.startTs))
 			}
 
 			if err := n.flushSink(ctx, resolved); err != nil {

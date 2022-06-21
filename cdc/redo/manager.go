@@ -138,6 +138,8 @@ type ManagerImpl struct {
 
 	rtsMap   map[model.TableID]model.Ts
 	rtsMapMu sync.RWMutex
+
+	rowCount uint64
 }
 
 // NewManager creates a new Manager
@@ -261,6 +263,11 @@ func (m *ManagerImpl) EmitRowChangedEvents(
 	tableID model.TableID,
 	rows ...*model.RowChangedEvent,
 ) error {
+	c := atomic.AddUint64(&m.rowCount, uint64(len(rows)))
+	log.Error("[redo]EmitRowChangedEvents",
+		zap.Int64("tableID", int64(tableID)),
+		zap.Any("rows", rows),
+		zap.Uint64("rowCount", c))
 	timer := time.NewTimer(logBufferTimeout)
 	defer timer.Stop()
 	select {
@@ -283,6 +290,9 @@ func (m *ManagerImpl) FlushLog(
 	tableID model.TableID,
 	resolvedTs uint64,
 ) error {
+	log.Error("[redo]FlushLog",
+		zap.Int64("tableID", int64(tableID)),
+		zap.Uint64("resolvedTs", resolvedTs))
 	timer := time.NewTimer(logBufferTimeout)
 	defer timer.Stop()
 	select {
@@ -309,12 +319,15 @@ func (m *ManagerImpl) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) err
 func (m *ManagerImpl) GetResolvedTs(tableID model.TableID) model.Ts {
 	m.rtsMapMu.Lock()
 	defer m.rtsMapMu.Unlock()
+	log.Error("[redo] GetResolvedTs",
+		zap.Int64("TableID", tableID),
+		zap.Uint64("ResolvedTs", m.rtsMap[tableID]))
 	return m.rtsMap[tableID]
 }
 
 // GetMinResolvedTs returns the minimum resolved ts of all tables in this redo log manager
 func (m *ManagerImpl) GetMinResolvedTs() model.Ts {
-	log.Error("", zap.Uint64("minResolvedTs", atomic.LoadUint64(&m.minResolvedTs)))
+	log.Error("[redo] GetMinResolvedTs", zap.Uint64("minResolvedTs", atomic.LoadUint64(&m.minResolvedTs)))
 	return atomic.LoadUint64(&m.minResolvedTs)
 }
 
@@ -364,6 +377,7 @@ func (m *ManagerImpl) Cleanup(ctx context.Context) error {
 func (m *ManagerImpl) flushLog(
 	ctx context.Context, tableRtsMap map[model.TableID]model.Ts,
 ) (map[model.TableID]model.Ts, error) {
+	log.Error("flushing ......", zap.Any("tableRtsMap", tableRtsMap))
 	emptyRtsMap := make(map[model.TableID]model.Ts)
 	err := m.writer.FlushLog(ctx, tableRtsMap)
 	if err != nil {
