@@ -451,6 +451,7 @@ func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 			}
 			switch cache.eventType {
 			case model.MqMessageTypeRow:
+				startTs := time.Now()
 				logs := make([]*model.RedoRowChangedEvent, 0, len(cache.rows))
 				for _, row := range cache.rows {
 					logs = append(logs, RowToRedo(row))
@@ -460,6 +461,7 @@ func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 					handleErr(err)
 					return
 				}
+				log.Warn("[redo]")
 			case model.MqMessageTypeResolved:
 				// handle resolved ts
 				if oldRts, ok := tableRtsMap[cache.tableID]; ok {
