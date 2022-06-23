@@ -213,12 +213,12 @@ func (w *Writer) runFlushToDisk(ctx context.Context, flushIntervalInMs int64) {
 					zap.Error(err))
 			}
 		case <-ticker.C:
-			err := w.Flush()
-			if err != nil {
-				log.Error("redo log flush fail",
-					zap.String("namespace", w.cfg.ChangeFeedID.Namespace),
-					zap.String("changefeed", w.cfg.ChangeFeedID.ID), zap.Error(err))
-			}
+			// err := w.Flush()
+			// if err != nil {
+			// 	log.Error("redo log flush fail",
+			// 		zap.String("namespace", w.cfg.ChangeFeedID.Namespace),
+			// 		zap.String("changefeed", w.cfg.ChangeFeedID.ID), zap.Error(err))
+			// }
 		}
 	}
 }
@@ -228,6 +228,7 @@ func (w *Writer) runFlushToDisk(ctx context.Context, flushIntervalInMs int64) {
 func (w *Writer) Write(rawData []byte) (int, error) {
 	w.Lock()
 	defer w.Unlock()
+	startTs := time.Now()
 
 	writeLen := int64(len(rawData))
 	if writeLen > w.cfg.MaxLogSize {
@@ -261,6 +262,7 @@ func (w *Writer) Write(rawData []byte) (int, error) {
 	n, err := w.bw.Write(rawData)
 	w.metricWriteBytes.Add(float64(n))
 	w.size += int64(n)
+	log.Warn("redo file write to pageCache", zap.Any("cost", time.Since(startTs)))
 	return n, err
 }
 

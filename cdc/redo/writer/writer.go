@@ -337,7 +337,12 @@ func (l *LogWriter) WriteLog(ctx context.Context, tableID int64, rows []*model.R
 		}
 
 		l.rowWriter.AdvanceTs(r.Row.CommitTs)
+		startTs := time.Now()
 		_, err = l.rowWriter.Write(data)
+		log.Error("In logWriter", zap.Any("cost",
+			time.Since(startTs)),
+			zap.Any("len", len(data)),
+			zap.Any("count", len(rows)))
 		if err != nil {
 			l.metricTotalRowsCount.Add(float64(i))
 			return maxCommitTs, err

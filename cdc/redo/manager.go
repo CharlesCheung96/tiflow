@@ -33,7 +33,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var updateRtsInterval = time.Second
+var updateRtsInterval = time.Second * 2
 
 // ConsistentLevelType is the level of redo log consistent level.
 type ConsistentLevelType string
@@ -160,6 +160,8 @@ func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *Manager
 		logBuffer:   chann.New[cacheEvents](),
 		needsFlush:  make(chan struct{}, 1),
 	}
+
+	log.Error("", zap.Any("consistentConfig", cfg))
 
 	switch m.storageType {
 	case consistentStorageBlackhole:
@@ -292,7 +294,8 @@ func (m *ManagerImpl) FlushLog(
 ) error {
 	log.Error("[redo]FlushLog",
 		zap.Int64("tableID", int64(tableID)),
-		zap.Uint64("resolvedTs", resolvedTs))
+		zap.Uint64("resolvedTs", resolvedTs),
+		zap.Any("pendingEvents", m.logBuffer.Len()))
 	timer := time.NewTimer(logBufferTimeout)
 	defer timer.Stop()
 	select {
@@ -455,7 +458,9 @@ func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 				for _, row := range cache.rows {
 					logs = append(logs, RowToRedo(row))
 				}
+				startTs := time.Now()
 				_, err := m.writer.WriteLog(ctx, cache.tableID, logs)
+				log.Warn("[redo] write log", zap.Duration("cost", time.Since(startTs)))
 				if err != nil {
 					handleErr(err)
 					return
@@ -483,14 +488,15 @@ func (m *ManagerImpl) bgUpdateLog(ctx context.Context, errCh chan<- error) {
 		case <-m.needsFlush:
 			log.Info("flushing redo log >>>>>>")
 			var err error
+			startTs := time.Now()
 			tableRtsMap, err = m.flushLog(ctx, tableRtsMap)
-			log.Info("flushing done <<<<<<======")
+			log.Warn("flushing done <<<<<<======", zap.Duration("cost", time.Since(startTs)))
 			if err != nil {
 				handleErr(err)
 				return
 			}
 		default:
-			log.Info("no need to flush log")
+			log.Info("no need to flush log", zap.Any("tableRtsMap", tableRtsMap))
 		}
 	}
 }
