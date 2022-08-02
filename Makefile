@@ -1,8 +1,8 @@
-### Makefile for ticdc
+### Makefile for tiflow
 .PHONY: build test check clean fmt cdc kafka_consumer coverage \
 	integration_test_build integration_test integration_test_mysql integration_test_kafka bank \
 	dm dm-master dm-worker dmctl dm-syncer dm_coverage \
-	engine tiflow tiflow-demo tiflow-chaos-case
+	engine tiflow tiflow-demo tiflow-chaos-case engine_image
 
 PROJECT=tiflow
 P=3
@@ -499,6 +499,20 @@ tiflow-generate-mock: tools/bin/mockgen
 engine_image:
 	@which docker || (echo "docker not found in ${PATH}"; exit 1)
 	./engine/test/utils/run_engine.sh build
+
+engine_image_amd64: 
+	@which docker || (echo "docker not found in ${PATH}"; exit 1)
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow ./cmd/tiflow/main.go
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow-demoserver ./cmd/tiflow-demoserver
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow-chaos-case ./engine/chaos/cases
+	docker build --platform linux/amd64 -f ./engine/deployments/docker/dev.Dockerfile -t dataflow:test ./ 
+
+engine_image_arm64: 
+	@which docker || (echo "docker not found in ${PATH}"; exit 1)
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow ./cmd/tiflow/main.go
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow-demoserver ./cmd/tiflow-demoserver
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiflow-chaos-case ./engine/chaos/cases
+	docker build --platform linux/amd64 -f ./engine/deployments/docker/dev.Dockerfile -t dataflow:test ./ 
 
 engine_unit_test: check_failpoint_ctl
 	$(call run_engine_unit_test,$(ENGINE_PACKAGES))
