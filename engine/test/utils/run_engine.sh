@@ -38,6 +38,14 @@ case $1 in
 	echo -e "\n\n[$(date)] <<<<<< stop engine cluster success! >>>>>>"
 	docker container ls
 	;;
+"logs")
+	shift && WORK_DIR=$1
+	flag=
+	generate_flag $*
+	docker compose $flag logs -t > $WORK_DIR/docker_compose.log
+
+	echo -e "[$(date)] <<<<<< save docker compose logs success! >>>>>>\n"
+	;;
 *)
 	echo "Unknown parameter: ${1}" >&2
 	exit 1
