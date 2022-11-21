@@ -109,8 +109,8 @@ service JobManager {
 message Selector {
     enum Op {
         OpUnknown = 0;
-        Eq = 1;
-        Neq = 2;
+        Equal = 1;
+        NotEqual = 2;
         Regex = 3;
     }
 
@@ -180,7 +180,7 @@ message ScheduleTaskResponse {
 }
 
 message ExecWorkload {
-    int32 tp = 1;
+    int32 tp = 1; // 需要用 enum 么
     int32 usage = 2;
 }
 
@@ -239,17 +239,15 @@ message Job {
 
 message CreateJobRequest {
     Job job = 1;
-    string tenant_id = 2;
-    string project_id = 3;
+    ProjectInfo project_info = 2;
 }
 
 message GetJobRequest {
     string id = 1;
-    string tenant_id = 2;
-    string project_id = 3;
+    ProjectInfo project_info = 2;
     // Whether to return the config of the job.
     // Config may contain sensitive information, it is not returned by default.
-    bool include_config = 4;
+    bool include_config = 3;
 }
 
 message ListJobsRequest {
@@ -258,11 +256,10 @@ message ListJobsRequest {
     int32 page_size = 1;
     // The page token, returned by a previous call, to request the next page of results.
     string page_token = 2;
-    string tenant_id = 3;
-    string project_id = 4;
+    ProjectInfo project_info = 3;
     // Whether to return the config of the job.
     // Config may contain sensitive information, it is not returned by default.
-    bool include_config = 5;
+    bool include_config = 4;
 }
 
 message ListJobsResponse {
@@ -273,14 +270,12 @@ message ListJobsResponse {
 
 message CancelJobRequest {
     string id = 1;
-    string tenant_id = 2;
-    string project_id = 3;
+    ProjectInfo project_info = 2;
 }
 
 message DeleteJobRequest {
     string id = 1;
-    string tenant_id = 2;
-    string project_id = 3;
+    ProjectInfo project_info = 2;
 }
 
 message QueryStorageConfigRequest {

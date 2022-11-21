@@ -10,7 +10,7 @@ enum StoreType {
 }
 
 message RegisterMetaStoreRequest {
-    string address = 1;
+    bytes config = 1;
     StoreType tp = 2;
 }
 
@@ -22,5 +22,5 @@ message QueryMetaStoreRequest {
 }
 
 message QueryMetaStoreResponse {
-    string address = 2;
+    bytes config = 1;
 }
