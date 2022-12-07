@@ -38,7 +38,7 @@ services:
         - prometheus
     
     grafana:
-        image: grafana/grafana-oss:latest
+        image: grafana/grafana:7.5.11
         container_name: grafana
         network_mode: host
         volumes:

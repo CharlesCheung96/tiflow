@@ -12,6 +12,21 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
     - targets: ["127.0.0.1:10241"]
+  - job_name: "master5"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:10245"]
+  - job_name: "master6"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:10246"]
+  - job_name: "master7"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:10247"]
   - job_name: "executor0"
     scrape_interval: 3s
     metrics_path: /metrics
@@ -22,6 +37,21 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
     - targets: ["127.0.0.1:10243"]
+  - job_name: "executor11"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:11241"]
+  - job_name: "executor12"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:11242"]
+  - job_name: "executor13"
+    scrape_interval: 3s
+    metrics_path: /metrics
+    static_configs:
+    - targets: ["127.0.0.1:11243"]
   - job_name: "metric4"
     scrape_interval: 3s
     metrics_path: /metric4

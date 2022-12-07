@@ -11,7 +11,7 @@ image:
   tag: chaos
 
 master:
-  replicas: 3
+  replicas: 1
   dataStorage: 2Gi
   logStorage: 1Gi
   config: |
@@ -38,7 +38,7 @@ master:
     secret-access-key = "engineSecret"
 
 executor:
-  replicas: 4
+  replicas: 1
   logStorage: 1Gi
   config: |
     keepalive-ttl = "20s"
