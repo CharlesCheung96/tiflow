@@ -14,15 +14,19 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/stretchr/testify/require"
 )
 
 func TestParseLogFileName(t *testing.T) {
+	t.Parallel()
+
 	type arg struct {
 		name string
 	}
@@ -170,6 +174,8 @@ func TestParseLogFileName(t *testing.T) {
 }
 
 func TestGetChangefeedFiles(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		fileNames  []string
 		changefeed model.ChangeFeedID
@@ -202,5 +208,21 @@ func TestGetChangefeedFiles(t *testing.T) {
 	for _, c := range cases {
 		got := FilterChangefeedFiles(c.fileNames, c.changefeed)
 		require.Equal(t, c.want, got)
+	}
+}
+
+func TestInitExternalStorage(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	urls := []string{
+		fmt.Sprintf("file://%s/test", dir),
+	}
+
+	for _, urlStr := range urls {
+		url, err := storage.ParseRawURL(urlStr)
+		require.NoError(t, err)
+		_, err = InitExternalStorage(context.Background(), *url)
+		require.NoError(t, err)
 	}
 }

@@ -37,9 +37,11 @@ const (
 
 // InitExternalStorage init an external storage.
 var InitExternalStorage = func(ctx context.Context, uri url.URL) (storage.ExternalStorage, error) {
-	if len(uri.Host) == 0 {
+	if ConsistentStorage(uri.Scheme) == ConsistentStorageS3 && len(uri.Host) == 0 {
+		// TODO: this branch is compatible with previous s3 logic and will be removed
+		// in the future.
 		return nil, errors.WrapChangefeedUnretryableErr(errors.ErrS3StorageInitialize,
-			errors.Errorf("please specify the bucket for %s in %v", uri.Scheme, uri))
+			errors.Errorf("please specify the bucket for %+v", uri))
 	}
 	s, err := util.GetExternalStorage(ctx, uri.String(), nil)
 	if err != nil {
