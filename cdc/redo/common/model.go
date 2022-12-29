@@ -92,24 +92,43 @@ const (
 
 	// ConsistentStorageS3 is a S3 storage, which will store data in S3.
 	ConsistentStorageS3 ConsistentStorage = "s3"
+	// ConsistentStorageGCS is a GCS storage, which will store data in GCS.
+	ConsistentStorageGCS ConsistentStorage = "gcs"
+	// ConsistentStorageGS is an alias of GCS storage.
+	ConsistentStorageGS ConsistentStorage = "gs"
+	// ConsistentStorageAzblob is a Azure Blob storage, which will store data in Azure Blob.
+	ConsistentStorageAzblob ConsistentStorage = "azblob"
+	// ConsistentStorageAzure is an alias of Azure Blob storage.
+	ConsistentStorageAzure ConsistentStorage = "azure"
+	// ConsistentStorageFile is  an external storage based on local files and
+	// will only be used for testing.
+	ConsistentStorageFile ConsistentStorage = "file"
+	// ConsistentStorageNoop is a noop storage, which simply discard all data.
+	ConsistentStorageNoop ConsistentStorage = "noop"
 )
 
 // IsValidConsistentStorage checks whether a give consistent storage is valid.
 func IsValidConsistentStorage(scheme string) bool {
 	switch ConsistentStorage(scheme) {
-	case ConsistentStorageBlackhole,
-		ConsistentStorageLocal, ConsistentStorageNFS,
-		ConsistentStorageS3:
+	case ConsistentStorageBlackhole, ConsistentStorageLocal, ConsistentStorageNFS,
+		ConsistentStorageS3, ConsistentStorageGCS, ConsistentStorageGS,
+		ConsistentStorageAzblob, ConsistentStorageAzure, ConsistentStorageFile,
+		ConsistentStorageNoop:
 		return true
 	default:
 		return false
 	}
 }
 
-// IsExternalStorage returns whether external storage, such as s3 and gcs, is used.
+// IsExternalStorage returns whether an external storage is used.
 func IsExternalStorage(storage string) bool {
+	return !IsLocalStorage(storage)
+}
+
+// IsLocalStorage returns whether a local storage is used.
+func IsLocalStorage(storage string) bool {
 	switch ConsistentStorage(storage) {
-	case ConsistentStorageS3:
+	case ConsistentStorageBlackhole, ConsistentStorageLocal, ConsistentStorageNFS:
 		return true
 	default:
 		return false

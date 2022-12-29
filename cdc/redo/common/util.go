@@ -14,12 +14,15 @@
 package common
 
 import (
+	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
-	"github.com/pingcap/errors"
+	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
+	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/util"
 )
 
@@ -32,9 +35,18 @@ const (
 	RedoLogFileFormatV2 = "%s_%s_%s_%s_%d_%s%s"
 )
 
-// InitExternalStorage init a storage used for s3,
-// s3URI should be like s3URI="s3://logbucket/test-changefeed?endpoint=http://$S3_ENDPOINT/"
-var InitExternalStorage = util.InitS3storage
+// InitExternalStorage init an external storage.
+var InitExternalStorage = func(ctx context.Context, uri url.URL) (storage.ExternalStorage, error) {
+	if len(uri.Host) == 0 {
+		return nil, errors.WrapChangefeedUnretryableErr(errors.ErrS3StorageInitialize,
+			errors.Errorf("please specify the bucket for %s in %v", uri.Scheme, uri))
+	}
+	s, err := util.GetExternalStorage(ctx, uri.String(), nil)
+	if err != nil {
+		return nil, errors.WrapChangefeedUnretryableErr(errors.ErrS3StorageInitialize, err)
+	}
+	return s, nil
+}
 
 // logFormat2ParseFormat converts redo log file name format to the space separated
 // format, which can be read and parsed by sscanf. Besides remove the suffix `%s`
