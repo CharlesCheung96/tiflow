@@ -61,8 +61,7 @@ func TestWriterWrite(t *testing.T) {
 				Dir:          dir,
 				ChangeFeedID: cf,
 				CaptureID:    "cp",
-				FileType:     common.DefaultRowLogFileType,
-				CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
+				FileType:     common.RedoRowLogFileType,
 			},
 			uint64buf: make([]byte, 8),
 			running:   *atomic.NewBool(true),
@@ -153,8 +152,7 @@ func TestWriterWrite(t *testing.T) {
 				Dir:          dir,
 				ChangeFeedID: cf11s[idx],
 				CaptureID:    "cp",
-				FileType:     common.DefaultRowLogFileType,
-				CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
+				FileType:     common.RedoRowLogFileType,
 			},
 			uint64buf: make([]byte, 8),
 			running:   *atomic.NewBool(true),
@@ -218,9 +216,9 @@ func TestWriterGC(t *testing.T) {
 		ChangeFeedID: model.DefaultChangeFeedID("test"),
 		CaptureID:    "cp",
 		MaxLogSize:   10,
-		FileType:     common.DefaultRowLogFileType,
-		CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
-		S3Storage:    true,
+		FileType:     common.RedoRowLogFileType,
+
+		UseExternalStorage: true,
 	}
 	w := &Writer{
 		cfg:       cfg,
@@ -262,7 +260,7 @@ func TestWriterGC(t *testing.T) {
 	ts, fileType, err := common.ParseLogFileName(files[0].Name())
 	require.Nil(t, err, files[0].Name())
 	require.EqualValues(t, 3, ts)
-	require.Equal(t, common.DefaultRowLogFileType, fileType)
+	require.Equal(t, common.RedoRowLogFileType, fileType)
 	time.Sleep(time.Duration(100) * time.Millisecond)
 
 	w1 := &Writer{
@@ -291,8 +289,8 @@ func TestNewWriter(t *testing.T) {
 
 	uuidGen := uuid.NewConstGenerator("const-uuid")
 	w, err := NewWriter(context.Background(), &FileWriterConfig{
-		Dir:       "sdfsf",
-		S3Storage: false,
+		Dir:                "sdfsf",
+		UseExternalStorage: false,
 	},
 		WithUUIDGenerator(func() uuid.Generator { return uuidGen }),
 	)
@@ -324,10 +322,10 @@ func TestNewWriter(t *testing.T) {
 			Dir:          dir,
 			CaptureID:    "cp",
 			ChangeFeedID: changefeed,
-			FileType:     common.DefaultDDLLogFileType,
-			CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
-			S3Storage:    true,
-			MaxLogSize:   defaultMaxLogSize,
+			FileType:     common.RedoDDLLogFileType,
+
+			UseExternalStorage: true,
+			MaxLogSize:         defaultMaxLogSize,
 		},
 		uint64buf: make([]byte, 8),
 		storage:   mockStorage,
@@ -380,10 +378,10 @@ func TestRotateFileWithFileAllocator(t *testing.T) {
 			Dir:          dir,
 			CaptureID:    "cp",
 			ChangeFeedID: changefeed,
-			FileType:     common.DefaultRowLogFileType,
-			CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
-			S3Storage:    true,
-			MaxLogSize:   defaultMaxLogSize,
+			FileType:     common.RedoRowLogFileType,
+
+			UseExternalStorage: true,
+			MaxLogSize:         defaultMaxLogSize,
 		},
 		uint64buf: make([]byte, 8),
 		metricWriteBytes: common.RedoWriteBytesGauge.
@@ -396,7 +394,7 @@ func TestRotateFileWithFileAllocator(t *testing.T) {
 		uuidGenerator: uuidGen,
 	}
 	w.allocator = fsutil.NewFileAllocator(
-		w.cfg.Dir, common.DefaultRowLogFileType, defaultMaxLogSize)
+		w.cfg.Dir, common.RedoRowLogFileType, defaultMaxLogSize)
 
 	w.running.Store(true)
 	_, err = w.Write([]byte("test"))
@@ -445,10 +443,10 @@ func TestRotateFileWithoutFileAllocator(t *testing.T) {
 			Dir:          dir,
 			CaptureID:    "cp",
 			ChangeFeedID: changefeed,
-			FileType:     common.DefaultDDLLogFileType,
-			CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
-			S3Storage:    true,
-			MaxLogSize:   defaultMaxLogSize,
+			FileType:     common.RedoDDLLogFileType,
+
+			UseExternalStorage: true,
+			MaxLogSize:         defaultMaxLogSize,
 		},
 		uint64buf: make([]byte, 8),
 		metricWriteBytes: common.RedoWriteBytesGauge.

@@ -56,13 +56,14 @@ type fileReader interface {
 }
 
 type readerConfig struct {
-	dir        string
-	fileType   string
-	startTs    uint64
-	endTs      uint64
-	s3Storage  bool
-	s3URI      url.URL
-	workerNums int
+	startTs  uint64
+	endTs    uint64
+	dir      string
+	fileType string
+
+	uri                url.URL
+	useExternalStorage bool
+	workerNums         int
 }
 
 type reader struct {
@@ -80,13 +81,13 @@ func newReader(ctx context.Context, cfg *readerConfig) ([]fileReader, error) {
 		return nil, cerror.WrapError(cerror.ErrRedoConfigInvalid, errors.New("readerConfig can not be nil"))
 	}
 
-	if cfg.s3Storage {
-		s3storage, err := common.InitS3storage(ctx, cfg.s3URI)
+	if cfg.useExternalStorage {
+		extStorage, err := common.InitExternalStorage(ctx, cfg.uri)
 		if err != nil {
 			return nil, err
 		}
 
-		err = downLoadToLocal(ctx, cfg.dir, s3storage, cfg.fileType)
+		err = downLoadToLocal(ctx, cfg.dir, extStorage, cfg.fileType)
 		if err != nil {
 			return nil, cerror.WrapError(cerror.ErrRedoDownloadFailed, err)
 		}
@@ -114,9 +115,9 @@ func newReader(ctx context.Context, cfg *readerConfig) ([]fileReader, error) {
 	return readers, nil
 }
 
-func selectDownLoadFile(ctx context.Context, s3storage storage.ExternalStorage, fixedType string) ([]string, error) {
+func selectDownLoadFile(ctx context.Context, extStorage storage.ExternalStorage, fixedType string) ([]string, error) {
 	files := []string{}
-	err := s3storage.WalkDir(ctx, &storage.WalkOption{}, func(path string, size int64) error {
+	err := extStorage.WalkDir(ctx, &storage.WalkOption{}, func(path string, size int64) error {
 		fileName := filepath.Base(path)
 		_, fileType, err := common.ParseLogFileName(fileName)
 		if err != nil {
@@ -135,8 +136,8 @@ func selectDownLoadFile(ctx context.Context, s3storage storage.ExternalStorage, 
 	return files, nil
 }
 
-func downLoadToLocal(ctx context.Context, dir string, s3storage storage.ExternalStorage, fixedType string) error {
-	files, err := selectDownLoadFile(ctx, s3storage, fixedType)
+func downLoadToLocal(ctx context.Context, dir string, extStorage storage.ExternalStorage, fixedType string) error {
+	files, err := selectDownLoadFile(ctx, extStorage, fixedType)
 	if err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func downLoadToLocal(ctx context.Context, dir string, s3storage storage.External
 	for _, file := range files {
 		f := file
 		eg.Go(func() error {
-			data, err := s3storage.ReadFile(eCtx, f)
+			data, err := extStorage.ReadFile(eCtx, f)
 			if err != nil {
 				return cerror.WrapError(cerror.ErrS3StorageAPI, err)
 			}

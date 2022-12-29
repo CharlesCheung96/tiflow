@@ -47,8 +47,7 @@ func TestReaderRead(t *testing.T) {
 		Dir:          dir,
 		ChangeFeedID: model.DefaultChangeFeedID("test-cf"),
 		CaptureID:    "cp",
-		FileType:     common.DefaultRowLogFileType,
-		CreateTime:   time.Date(2000, 1, 1, 1, 1, 1, 1, &time.Location{}),
+		FileType:     common.RedoRowLogFileType,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -81,7 +80,7 @@ func TestReaderRead(t *testing.T) {
 		dir:      dir,
 		startTs:  1,
 		endTs:    12,
-		fileType: common.DefaultRowLogFileType,
+		fileType: common.RedoRowLogFileType,
 	})
 	require.Nil(t, err)
 	require.Equal(t, 1, len(r))
@@ -104,7 +103,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 	}
 	uuidGen := uuid.NewGenerator()
 	fileName := fmt.Sprintf(common.RedoLogFileFormatV2, "cp",
-		"default", "test-cf", common.DefaultDDLLogFileType, 11,
+		"default", "test-cf", common.RedoDDLLogFileType, 11,
 		uuidGen.NewString(), common.LogEXT+common.TmpEXT)
 	w, err := writer.NewWriter(ctx, cfg, writer.WithLogFileName(func() string {
 		return fileName
@@ -132,7 +131,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 
 	// no data, wil not open
 	fileName = fmt.Sprintf(common.RedoLogFileFormatV2, "cp",
-		"default", "test-cf11", common.DefaultDDLLogFileType, 10,
+		"default", "test-cf11", common.RedoDDLLogFileType, 10,
 		uuidGen.NewString(), common.LogEXT)
 	path = filepath.Join(dir, fileName)
 	_, err = os.Create(path)
@@ -140,7 +139,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 
 	// SortLogEXT, wil open
 	fileName = fmt.Sprintf(common.RedoLogFileFormatV2, "cp", "default",
-		"test-cf111", common.DefaultDDLLogFileType, 10, uuidGen.NewString(),
+		"test-cf111", common.RedoDDLLogFileType, 10, uuidGen.NewString(),
 		common.LogEXT) + common.SortLogEXT
 	path = filepath.Join(dir, fileName)
 	f1, err := os.Create(path)
@@ -148,7 +147,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 
 	dir1 := t.TempDir()
 	fileName = fmt.Sprintf(common.RedoLogFileFormatV2, "cp", "default", "test-cf",
-		common.DefaultDDLLogFileType, 11, uuidGen.NewString(), common.LogEXT+"test")
+		common.RedoDDLLogFileType, 11, uuidGen.NewString(), common.LogEXT+"test")
 	path = filepath.Join(dir1, fileName)
 	_, err = os.Create(path)
 	require.Nil(t, err)
@@ -168,7 +167,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 			name: "dir not exist",
 			args: arg{
 				dir:       dir + "test",
-				fixedName: common.DefaultDDLLogFileType,
+				fixedName: common.RedoDDLLogFileType,
 				startTs:   0,
 			},
 			wantErr: ".*CDC:ErrRedoFileOp*.",
@@ -177,7 +176,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 			name: "happy",
 			args: arg{
 				dir:       dir,
-				fixedName: common.DefaultDDLLogFileType,
+				fixedName: common.RedoDDLLogFileType,
 				startTs:   0,
 			},
 			wantRet: []io.ReadCloser{f, f1},
@@ -186,7 +185,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 			name: "wrong ts",
 			args: arg{
 				dir:       dir,
-				fixedName: common.DefaultDDLLogFileType,
+				fixedName: common.RedoDDLLogFileType,
 				startTs:   12,
 			},
 			wantRet: []io.ReadCloser{f},
@@ -195,7 +194,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 			name: "wrong fixedName",
 			args: arg{
 				dir:       dir,
-				fixedName: common.DefaultDDLLogFileType + "test",
+				fixedName: common.RedoDDLLogFileType + "test",
 				startTs:   0,
 			},
 		},
@@ -203,7 +202,7 @@ func TestReaderOpenSelectedFiles(t *testing.T) {
 			name: "wrong ext",
 			args: arg{
 				dir:       dir1,
-				fixedName: common.DefaultDDLLogFileType,
+				fixedName: common.RedoDDLLogFileType,
 				startTs:   0,
 			},
 		},

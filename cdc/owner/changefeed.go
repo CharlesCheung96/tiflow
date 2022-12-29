@@ -26,6 +26,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/puller"
 	"github.com/pingcap/tiflow/cdc/redo"
+	redoCommon "github.com/pingcap/tiflow/cdc/redo/common"
 	"github.com/pingcap/tiflow/cdc/scheduler"
 	"github.com/pingcap/tiflow/cdc/sink"
 	"github.com/pingcap/tiflow/pkg/config"
@@ -674,7 +675,7 @@ func (c *changefeed) cleanupRedoManager(ctx context.Context) {
 			log.Warn("changefeed is removed, but state is not complete", zap.Any("state", c.state))
 			return
 		}
-		if !redo.IsConsistentEnabled(c.state.Info.Config.Consistent.Level) {
+		if !redoCommon.IsConsistentEnabled(c.state.Info.Config.Consistent.Level) {
 			return
 		}
 		// when removing a paused changefeed, the redo manager is nil, create a new one

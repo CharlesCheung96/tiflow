@@ -37,10 +37,10 @@ import (
 )
 
 func TestNewLogReader(t *testing.T) {
-	_, err := NewLogReader(context.Background(), nil)
+	_, err := newLogReader(context.Background(), nil)
 	require.NotNil(t, err)
 
-	_, err = NewLogReader(context.Background(), &LogReaderConfig{})
+	_, err = newLogReader(context.Background(), &LogReaderConfig{})
 	require.Nil(t, err)
 
 	dir := t.TempDir()
@@ -48,23 +48,23 @@ func TestNewLogReader(t *testing.T) {
 	s3URI, err := url.Parse("s3://logbucket/test-changefeed?endpoint=http://111/")
 	require.Nil(t, err)
 
-	origin := common.InitS3storage
+	origin := common.InitExternalStorage
 	defer func() {
-		common.InitS3storage = origin
+		common.InitExternalStorage = origin
 	}()
 	controller := gomock.NewController(t)
 	mockStorage := mockstorage.NewMockExternalStorage(controller)
 	// no file to download
 	mockStorage.EXPECT().WalkDir(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	common.InitS3storage = func(ctx context.Context, uri url.URL) (storage.ExternalStorage, error) {
+	common.InitExternalStorage = func(ctx context.Context, uri url.URL) (storage.ExternalStorage, error) {
 		return mockStorage, nil
 	}
 
 	// after init should rm the dir
-	_, err = NewLogReader(context.Background(), &LogReaderConfig{
-		S3Storage: true,
-		Dir:       dir,
-		S3URI:     *s3URI,
+	_, err = newLogReader(context.Background(), &LogReaderConfig{
+		UseExternalStorage: true,
+		Dir:                dir,
+		URI:                *s3URI,
 	})
 	require.Nil(t, err)
 	_, err = os.Stat(dir)
@@ -82,7 +82,7 @@ func TestLogReaderResetReader(t *testing.T) {
 	}
 	fileName := fmt.Sprintf(common.RedoLogFileFormatV2, "cp",
 		"default", "test-cf100",
-		common.DefaultDDLLogFileType, 100, uuid.NewString(), common.LogEXT)
+		common.RedoDDLLogFileType, 100, uuid.NewString(), common.LogEXT)
 	w, err := writer.NewWriter(ctx, cfg, writer.WithLogFileName(func() string {
 		return fileName
 	}))
@@ -103,7 +103,7 @@ func TestLogReaderResetReader(t *testing.T) {
 
 	fileName = fmt.Sprintf(common.RedoLogFileFormatV2, "cp",
 		"default", "test-cf10",
-		common.DefaultRowLogFileType, 10, uuid.NewString(), common.LogEXT)
+		common.RedoRowLogFileType, 10, uuid.NewString(), common.LogEXT)
 	w, err = writer.NewWriter(ctx, cfg, writer.WithLogFileName(func() string {
 		return fileName
 	}))
@@ -239,7 +239,7 @@ func TestLogReaderReadMeta(t *testing.T) {
 
 	fileName := fmt.Sprintf("%s_%s_%d_%s%s", "cp",
 		"test-changefeed",
-		time.Now().Unix(), common.DefaultMetaFileType, common.MetaEXT)
+		time.Now().Unix(), common.RedoMetaFileType, common.MetaEXT)
 	path := filepath.Join(dir, fileName)
 	f, err := os.Create(path)
 	require.Nil(t, err)
@@ -254,7 +254,7 @@ func TestLogReaderReadMeta(t *testing.T) {
 
 	fileName = fmt.Sprintf("%s_%s_%d_%s%s", "cp1",
 		"test-changefeed",
-		time.Now().Unix(), common.DefaultMetaFileType, common.MetaEXT)
+		time.Now().Unix(), common.RedoMetaFileType, common.MetaEXT)
 	path = filepath.Join(dir, fileName)
 	f, err = os.Create(path)
 	require.Nil(t, err)

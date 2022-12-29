@@ -13,22 +13,16 @@
 
 package redo
 
+import "github.com/pingcap/tiflow/cdc/redo/common"
+
 // ManagerOptions defines options for redo log manager.
 type ManagerOptions struct {
+	common.FileTypeConfig
+
 	// Whether to run background flush goroutine.
 	EnableBgRunner bool
-
 	// Whether to start a GC goroutine or not.
 	EnableGCRunner bool
-
-	// Whether it's created for emitting redo meta or not.
-	EmitMeta bool
-
-	// Whether it's created for emitting row events or not.
-	EmitRowEvents bool
-
-	// Whether it's created for emitting DDL events or not.
-	EmitDDLEvents bool
 
 	ErrCh chan<- error
 }
@@ -36,11 +30,13 @@ type ManagerOptions struct {
 // NewOwnerManagerOptions creates a manager options for owner.
 func NewOwnerManagerOptions(errCh chan<- error) *ManagerOptions {
 	return &ManagerOptions{
+		FileTypeConfig: common.FileTypeConfig{
+			EmitMeta:      true,
+			EmitRowEvents: false,
+			EmitDDLEvents: true,
+		},
 		EnableBgRunner: true,
 		EnableGCRunner: false,
-		EmitMeta:       true,
-		EmitRowEvents:  false,
-		EmitDDLEvents:  true,
 		ErrCh:          errCh,
 	}
 }
@@ -48,11 +44,13 @@ func NewOwnerManagerOptions(errCh chan<- error) *ManagerOptions {
 // NewProcessorManagerOptions creates a manager options for processor.
 func NewProcessorManagerOptions(errCh chan<- error) *ManagerOptions {
 	return &ManagerOptions{
+		FileTypeConfig: common.FileTypeConfig{
+			EmitMeta:      false,
+			EmitRowEvents: true,
+			EmitDDLEvents: false,
+		},
 		EnableBgRunner: true,
 		EnableGCRunner: true,
-		EmitMeta:       false,
-		EmitRowEvents:  true,
-		EmitDDLEvents:  false,
 		ErrCh:          errCh,
 	}
 }
@@ -60,22 +58,26 @@ func NewProcessorManagerOptions(errCh chan<- error) *ManagerOptions {
 // NewManagerOptionsForClean creates a manager options for cleaning.
 func NewManagerOptionsForClean() *ManagerOptions {
 	return &ManagerOptions{
+		FileTypeConfig: common.FileTypeConfig{
+			EmitMeta:      false,
+			EmitRowEvents: false,
+			EmitDDLEvents: false,
+		},
 		EnableBgRunner: false,
 		EnableGCRunner: false,
-		EmitMeta:       false,
-		EmitRowEvents:  false,
-		EmitDDLEvents:  false,
 	}
 }
 
 // newMockManagerOptions creates a manager options for mock tests.
 func newMockManagerOptions(errCh chan<- error) *ManagerOptions {
 	return &ManagerOptions{
+		FileTypeConfig: common.FileTypeConfig{
+			EmitMeta:      true,
+			EmitRowEvents: true,
+			EmitDDLEvents: true,
+		},
 		EnableBgRunner: true,
 		EnableGCRunner: true,
-		EmitMeta:       true,
-		EmitRowEvents:  true,
-		EmitDDLEvents:  true,
 		ErrCh:          errCh,
 	}
 }

@@ -73,15 +73,16 @@ type flusher interface {
 
 // FileWriterConfig is the configuration used by a Writer.
 type FileWriterConfig struct {
-	Dir          string
+	FileType     string
 	ChangeFeedID model.ChangeFeedID
 	CaptureID    string
-	FileType     string
-	CreateTime   time.Time
+
+	URI                url.URL
+	UseExternalStorage bool
+
 	// MaxLogSize is the maximum size of log in megabyte, defaults to defaultMaxLogSize.
 	MaxLogSize int64
-	S3Storage  bool
-	S3URI      url.URL
+	Dir        string
 }
 
 // Option define the writerOptions
@@ -148,10 +149,10 @@ func NewWriter(ctx context.Context, cfg *FileWriterConfig, opts ...Option) (*Wri
 	if cfg.MaxLogSize == 0 {
 		cfg.MaxLogSize = defaultMaxLogSize
 	}
-	var s3storage storage.ExternalStorage
-	if cfg.S3Storage {
+	var extStorage storage.ExternalStorage
+	if cfg.UseExternalStorage {
 		var err error
-		s3storage, err = common.InitS3storage(ctx, cfg.S3URI)
+		extStorage, err = common.InitExternalStorage(ctx, cfg.URI)
 		if err != nil {
 			return nil, err
 		}
@@ -166,7 +167,7 @@ func NewWriter(ctx context.Context, cfg *FileWriterConfig, opts ...Option) (*Wri
 		cfg:       cfg,
 		op:        op,
 		uint64buf: make([]byte, 8),
-		storage:   s3storage,
+		storage:   extStorage,
 
 		metricFsyncDuration: common.RedoFsyncDurationHistogram.
 			WithLabelValues(cfg.ChangeFeedID.Namespace, cfg.ChangeFeedID.ID),
@@ -194,7 +195,7 @@ func NewWriter(ctx context.Context, cfg *FileWriterConfig, opts ...Option) (*Wri
 	// if we use S3 as the remote storage, a file allocator can be leveraged to
 	// pre-allocate files for us.
 	// TODO: test whether this improvement can also be applied to NFS.
-	if cfg.S3Storage {
+	if cfg.UseExternalStorage {
 		w.allocator = fsutil.NewFileAllocator(cfg.Dir, cfg.FileType, defaultMaxLogSize)
 	}
 
@@ -317,7 +318,7 @@ func (w *Writer) close() error {
 		return err
 	}
 
-	if w.cfg.S3Storage {
+	if w.cfg.UseExternalStorage {
 		off, err := w.file.Seek(0, io.SeekCurrent)
 		if err != nil {
 			return err
@@ -355,7 +356,7 @@ func (w *Writer) close() error {
 
 	// We only write content to S3 before closing the local file.
 	// By this way, we no longer need renaming object in S3.
-	if w.cfg.S3Storage {
+	if w.cfg.UseExternalStorage {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultS3Timeout)
 		defer cancel()
 
@@ -478,7 +479,7 @@ func (w *Writer) GC(checkPointTs uint64) error {
 		return cerror.WrapError(cerror.ErrRedoFileOp, errs)
 	}
 
-	if w.cfg.S3Storage {
+	if w.cfg.UseExternalStorage {
 		// since if fail delete in s3, do not block any path, so just log the error if any
 		go func() {
 			var errs error
@@ -558,7 +559,7 @@ func (w *Writer) flushAndRotateFile() error {
 		return err
 	}
 
-	if !w.cfg.S3Storage {
+	if !w.cfg.UseExternalStorage {
 		return nil
 	}
 

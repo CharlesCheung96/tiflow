@@ -14,22 +14,13 @@
 package common
 
 import (
-	"context"
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/pingcap/errors"
-	backuppb "github.com/pingcap/kvproto/pkg/brpb"
-	"github.com/pingcap/log"
-	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
-	cerror "github.com/pingcap/tiflow/pkg/errors"
-	"go.uber.org/zap"
+	"github.com/pingcap/tiflow/pkg/util"
 )
 
 const (
@@ -41,37 +32,9 @@ const (
 	RedoLogFileFormatV2 = "%s_%s_%s_%s_%d_%s%s"
 )
 
-// InitS3storage init a storage used for s3,
+// InitExternalStorage init a storage used for s3,
 // s3URI should be like s3URI="s3://logbucket/test-changefeed?endpoint=http://$S3_ENDPOINT/"
-var InitS3storage = func(ctx context.Context, uri url.URL) (storage.ExternalStorage, error) {
-	if len(uri.Host) == 0 {
-		return nil, cerror.WrapChangefeedUnretryableErr(cerror.ErrS3StorageInitialize, errors.Errorf("please specify the bucket for s3 in %v", uri))
-	}
-
-	prefix := strings.Trim(uri.Path, "/")
-	s3 := &backuppb.S3{Bucket: uri.Host, Prefix: prefix}
-	options := &storage.BackendOptions{}
-	storage.ExtractQueryParameters(&uri, &options.S3)
-	if err := options.S3.Apply(s3); err != nil {
-		return nil, cerror.WrapChangefeedUnretryableErr(cerror.ErrS3StorageInitialize, err)
-	}
-
-	// we should set this to true, since br set it by default in parseBackend
-	s3.ForcePathStyle = true
-	backend := &backuppb.StorageBackend{
-		Backend: &backuppb.StorageBackend_S3{S3: s3},
-	}
-	s3storage, err := storage.New(ctx, backend, &storage.ExternalStorageOptions{
-		SendCredentials: false,
-		HTTPClient:      nil,
-		S3Retryer:       DefaultS3Retryer(),
-	})
-	if err != nil {
-		return nil, cerror.WrapChangefeedUnretryableErr(cerror.ErrS3StorageInitialize, err)
-	}
-
-	return s3storage, nil
-}
+var InitExternalStorage = util.InitS3storage
 
 // logFormat2ParseFormat converts redo log file name format to the space separated
 // format, which can be read and parsed by sscanf. Besides remove the suffix `%s`
@@ -84,7 +47,7 @@ func logFormat2ParseFormat(fmtStr string) string {
 func ParseLogFileName(name string) (uint64, string, error) {
 	ext := filepath.Ext(name)
 	if ext == MetaEXT {
-		return 0, DefaultMetaFileType, nil
+		return 0, RedoMetaFileType, nil
 	}
 
 	// if .sort, the name should be like
@@ -126,42 +89,6 @@ func ParseLogFileName(name string) (uint64, string, error) {
 		return 0, "", errors.Annotatef(err, "bad log name: %s", name)
 	}
 	return commitTs, fileType, nil
-}
-
-// retryerWithLog wraps the client.DefaultRetryer, and logs when retrying.
-type retryerWithLog struct {
-	client.DefaultRetryer
-}
-
-func isDeadlineExceedError(err error) bool {
-	return strings.Contains(err.Error(), "context deadline exceeded")
-}
-
-func (rl retryerWithLog) ShouldRetry(r *request.Request) bool {
-	if isDeadlineExceedError(r.Error) {
-		return false
-	}
-	return rl.DefaultRetryer.ShouldRetry(r)
-}
-
-func (rl retryerWithLog) RetryRules(r *request.Request) time.Duration {
-	backoffTime := rl.DefaultRetryer.RetryRules(r)
-	if backoffTime > 0 {
-		log.Warn("failed to request s3, retrying", zap.Error(r.Error), zap.Duration("backoff", backoffTime))
-	}
-	return backoffTime
-}
-
-// DefaultS3Retryer is the default s3 retryer, maybe this function
-// should be extracted to another place.
-func DefaultS3Retryer() request.Retryer {
-	return retryerWithLog{
-		DefaultRetryer: client.DefaultRetryer{
-			NumMaxRetries:    3,
-			MinRetryDelay:    1 * time.Second,
-			MinThrottleDelay: 2 * time.Second,
-		},
-	}
 }
 
 // FilterChangefeedFiles return the files that match to the changefeed.
