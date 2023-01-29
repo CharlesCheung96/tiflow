@@ -230,6 +230,7 @@ func (c *ReplicaConfig) ToInternalReplicaConfig() *config.ReplicaConfig {
 			MaxLogSize:        c.Consistent.MaxLogSize,
 			FlushIntervalInMs: c.Consistent.FlushIntervalInMs,
 			Storage:           c.Consistent.Storage,
+			UseFileBackend:    c.Consistent.UseFileBackend,
 		}
 	}
 	if c.Sink != nil {
@@ -387,6 +388,7 @@ func ToAPIReplicaConfig(c *config.ReplicaConfig) *ReplicaConfig {
 			MaxLogSize:        cloned.Consistent.MaxLogSize,
 			FlushIntervalInMs: cloned.Consistent.FlushIntervalInMs,
 			Storage:           cloned.Consistent.Storage,
+			UseFileBackend:    cloned.Consistent.UseFileBackend,
 		}
 	}
 	if cloned.Mounter != nil {
@@ -420,6 +422,7 @@ func GetDefaultReplicaConfig() *ReplicaConfig {
 			MaxLogSize:        64,
 			FlushIntervalInMs: config.DefaultFlushIntervalInMs,
 			Storage:           "",
+			UseFileBackend:    true,
 		},
 	}
 }
@@ -562,6 +565,7 @@ type ConsistentConfig struct {
 	MaxLogSize        int64  `json:"max_log_size"`
 	FlushIntervalInMs int64  `json:"flush_interval"`
 	Storage           string `json:"storage"`
+	UseFileBackend    bool   `json:"use_file_backend"`
 }
 
 // ChangefeedSchedulerConfig is per changefeed scheduler settings.

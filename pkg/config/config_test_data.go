@@ -58,7 +58,8 @@ const (
     "level": "none",
     "max-log-size": 64,
     "flush-interval": 2000,
-    "storage": ""
+    "storage": "",
+    "use-file-backend": true
   },
   "scheduler": {
     "region-per-span": 0
@@ -194,7 +195,8 @@ const (
     "level": "none",
     "max-log-size": 64,
     "flush-interval": 2000,
-    "storage": ""
+    "storage": "",
+    "use-file-backend": true
   },
   "scheduler": {
     "region-per-span": 100001
@@ -249,7 +251,8 @@ const (
     "level": "none",
     "max-log-size": 64,
     "flush-interval": 2000,
-    "storage": ""
+    "storage": "",
+    "use-file-backend": true
   },
   "scheduler": {
     "region-per-span": 100001

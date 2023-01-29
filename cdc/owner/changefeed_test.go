@@ -550,10 +550,17 @@ func testChangefeedReleaseResource(
 	err := cf.tick(ctx, captures)
 	require.Nil(t, err)
 	cancel()
-	// check redo log dir is deleted
-	_, err = os.Stat(redoLogDir)
-	log.Error(err)
-	require.True(t, os.IsNotExist(err))
+
+	if cf.state.Info.Config.Consistent.UseFileBackend {
+		// check redo log dir is deleted
+		_, err = os.Stat(redoLogDir)
+		log.Error(err)
+		require.True(t, os.IsNotExist(err))
+	} else {
+		files, err := os.ReadDir(redoLogDir)
+		require.NoError(t, err)
+		require.Len(t, files, 1) // only delete mark
+	}
 }
 
 func TestExecRenameTablesDDL(t *testing.T) {

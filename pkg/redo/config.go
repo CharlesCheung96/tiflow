@@ -73,6 +73,19 @@ type FileTypeConfig struct {
 	EmitDDLEvents bool
 }
 
+// CheckCompatibliity checks whether the config is valid.
+// EmitMeta and EmitDDLEvents could only be use by owner.
+// EmitRowEvents could only be use by processor.
+func (c FileTypeConfig) CheckCompatibliity() bool {
+	if c.EmitMeta != c.EmitDDLEvents {
+		return false
+	}
+	if c.EmitMeta && c.EmitRowEvents {
+		return false
+	}
+	return true
+}
+
 // ConsistentLevelType is the level of redo log consistent level.
 type ConsistentLevelType string
 
@@ -119,7 +132,7 @@ const (
 	consistentStorageAzblob ConsistentStorage = "azblob"
 	// consistentStorageAzure is an alias of Azure Blob storage.
 	consistentStorageAzure ConsistentStorage = "azure"
-	// consistentStorageFile is  an external storage based on local files and
+	// consistentStorageFile is an external storage based on local files and
 	// will only be used for testing.
 	consistentStorageFile ConsistentStorage = "file"
 	// consistentStorageNoop is a noop storage, which simply discard all data.

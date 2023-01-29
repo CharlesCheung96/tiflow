@@ -212,6 +212,9 @@ func TestWriterGC(t *testing.T) {
 		Return(errors.New("ignore err")).Times(1)
 
 	megabyte = 1
+	defer func() {
+		megabyte = 1024 * 1024
+	}()
 	cfg := &FileWriterConfig{
 		Dir:          dir,
 		ChangeFeedID: model.DefaultChangeFeedID("test"),

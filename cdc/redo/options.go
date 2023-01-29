@@ -69,17 +69,3 @@ func NewManagerOptionsForClean() *ManagerOptions {
 		EnableGCRunner: false,
 	}
 }
-
-// newMockManagerOptions creates a manager options for mock tests.
-func newMockManagerOptions(errCh chan<- error) *ManagerOptions {
-	return &ManagerOptions{
-		FileTypeConfig: redo.FileTypeConfig{
-			EmitMeta:      true,
-			EmitRowEvents: true,
-			EmitDDLEvents: true,
-		},
-		EnableBgRunner: true,
-		EnableGCRunner: true,
-		ErrCh:          errCh,
-	}
-}

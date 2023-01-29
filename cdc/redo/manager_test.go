@@ -30,6 +30,7 @@ import (
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/redo"
 	"github.com/pingcap/tiflow/pkg/spanz"
+	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -97,7 +98,7 @@ func TestLogManagerInProcessor(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logMgr, err := NewMockManager(ctx)
+	logMgr, err := NewMockManager(ctx, util.RoleProcessor)
 	require.Nil(t, err)
 	defer logMgr.Cleanup(ctx)
 
@@ -185,7 +186,7 @@ func TestLogManagerInOwner(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logMgr, err := NewMockManager(ctx)
+	logMgr, err := NewMockManager(ctx, util.RoleOwner)
 	require.Nil(t, err)
 	defer logMgr.Cleanup(ctx)
 
@@ -203,7 +204,7 @@ func BenchmarkRedoManager(b *testing.B) {
 	runBenchTest(ctx, b)
 }
 
-func BenchmarkRedoManagerWaitFlush(b *testing.B) {
+func BenchmarkRedoManagerWaitFlush_memory_50NanoLag(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	logMgr, maxTsMap := runBenchTest(ctx, b)
@@ -218,7 +219,7 @@ func BenchmarkRedoManagerWaitFlush(b *testing.B) {
 
 	for t := logMgr.GetMinResolvedTs(); t != minResolvedTs; {
 		time.Sleep(time.Millisecond * 200)
-		log.Debug("", zap.Uint64("targetTs", minResolvedTs), zap.Uint64("minResolvedTs", t))
+		log.Info("", zap.Uint64("targetTs", minResolvedTs), zap.Uint64("minResolvedTs", t))
 		t = logMgr.GetMinResolvedTs()
 	}
 }
@@ -226,7 +227,7 @@ func BenchmarkRedoManagerWaitFlush(b *testing.B) {
 func runBenchTest(
 	ctx context.Context, b *testing.B,
 ) (LogManager, *spanz.HashMap[*model.Ts]) {
-	logMgr, err := NewMockManager(ctx)
+	logMgr, err := NewMockManager(ctx, util.RoleProcessor)
 	require.Nil(b, err)
 
 	// Init tables
@@ -254,7 +255,6 @@ func runBenchTest(
 			rows := []*model.RowChangedEvent{}
 			for i := 0; i < maxRowCount; i++ {
 				if i%100 == 0 {
-					logMgr.UpdateResolvedTs(ctx, span, *maxCommitTs)
 					// prepare new row change events
 					b.StopTimer()
 					*maxCommitTs += rand.Uint64() % 10
@@ -267,6 +267,9 @@ func runBenchTest(
 					b.StartTimer()
 				}
 				logMgr.EmitRowChangedEvents(ctx, span, nil, rows...)
+				if i%100 == 0 {
+					logMgr.UpdateResolvedTs(ctx, span, *maxCommitTs)
+				}
 			}
 		}(spanz.TableIDToComparableSpan(tableID))
 	}
@@ -281,7 +284,7 @@ func TestManagerRtsMap(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logMgr, err := NewMockManager(ctx)
+	logMgr, err := NewMockManager(ctx, util.RoleProcessor)
 	require.Nil(t, err)
 	defer logMgr.Cleanup(ctx)
 
@@ -340,7 +343,7 @@ func TestManagerError(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	opts := newMockManagerOptions(errCh)
+	opts := NewProcessorManagerOptions(errCh)
 	opts.EnableBgRunner = false
 	opts.EnableGCRunner = false
 	logMgr, err := NewManager(ctx, cfg, opts)
@@ -405,12 +408,13 @@ func TestReuseWritter(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	opts := newMockManagerOptions(errCh)
+	optsArray := []*ManagerOptions{NewProcessorManagerOptions(errCh), NewOwnerManagerOptions(errCh)}
 	for i := 0; i < 2; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		ctx = contextutil.PutChangefeedIDInCtx(ctx, model.ChangeFeedID{
 			Namespace: "default", ID: "test-reuse-writter",
 		})
+		opts := optsArray[i]
 		mgr, err := NewManager(ctx, cfg, opts)
 		require.Nil(t, err)
 
@@ -425,7 +429,7 @@ func TestReuseWritter(t *testing.T) {
 
 	// The another redo manager shouldn't be influenced.
 	var workTimeSlice time.Duration
-	mgrs[1].flushLog(ctxs[1], func(err error) { opts.ErrCh <- err }, &workTimeSlice)
+	mgrs[1].flushLog(ctxs[1], func(err error) { optsArray[1].ErrCh <- err }, nil, &workTimeSlice)
 	select {
 	case x := <-errCh:
 		log.Panic("shouldn't get an error", zap.Error(x))

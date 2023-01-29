@@ -65,6 +65,7 @@ var defaultReplicaConfig = &ReplicaConfig{
 		MaxLogSize:        64,
 		FlushIntervalInMs: DefaultFlushIntervalInMs,
 		Storage:           "",
+		UseFileBackend:    true,
 	},
 	Scheduler: &ChangefeedSchedulerConfig{
 		RegionPerSpan: 0,

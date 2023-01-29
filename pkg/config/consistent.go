@@ -34,6 +34,7 @@ type ConsistentConfig struct {
 	MaxLogSize        int64  `toml:"max-log-size" json:"max-log-size"`
 	FlushIntervalInMs int64  `toml:"flush-interval" json:"flush-interval"`
 	Storage           string `toml:"storage" json:"storage"`
+	UseFileBackend    bool   `toml:"use-file-backend" json:"use-file-backend"`
 }
 
 // ValidateAndAdjust validates the consistency config and adjusts it if necessary.
@@ -45,6 +46,8 @@ func (c *ConsistentConfig) ValidateAndAdjust() error {
 	if c.FlushIntervalInMs == 0 {
 		c.FlushIntervalInMs = DefaultFlushIntervalInMs
 	}
+	// FIXME: remove this after testing
+	c.UseFileBackend = false
 
 	if c.FlushIntervalInMs < minFlushIntervalInMs {
 		return cerror.ErrInvalidReplicaConfig.FastGenByArgs(

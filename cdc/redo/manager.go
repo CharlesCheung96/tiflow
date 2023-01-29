@@ -32,6 +32,7 @@ import (
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/redo"
 	"github.com/pingcap/tiflow/pkg/spanz"
+	"github.com/pingcap/tiflow/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
@@ -205,15 +206,27 @@ func NewDisabledManager() *ManagerImpl {
 }
 
 // NewMockManager returns a mock redo manager instance, used in test only
-func NewMockManager(ctx context.Context) (*ManagerImpl, error) {
+func NewMockManager(ctx context.Context, role util.Role) (*ManagerImpl, error) {
 	cfg := &config.ConsistentConfig{
 		Level:             string(redo.ConsistentLevelEventual),
 		Storage:           "blackhole://",
 		FlushIntervalInMs: config.DefaultFlushIntervalInMs,
+		UseFileBackend:    false,
 	}
 
 	errCh := make(chan error, 1)
-	logMgr, err := NewManager(ctx, cfg, newMockManagerOptions(errCh))
+
+	var opts *ManagerOptions
+	switch role {
+	case util.RoleOwner:
+		opts = NewOwnerManagerOptions(errCh)
+	case util.RoleProcessor:
+		opts = NewProcessorManagerOptions(errCh)
+	default:
+		return nil, errors.Errorf("invalid role %s", role)
+	}
+
+	logMgr, err := NewManager(ctx, cfg, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +308,7 @@ func (m *ManagerImpl) UpdateCheckpointTs(ckpt model.Ts) {
 // EmitDDLEvent sends DDL event to redo log writer
 func (m *ManagerImpl) EmitDDLEvent(ctx context.Context, ddl *model.DDLEvent) error {
 	return m.withLock(func(m *ManagerImpl) error {
-		return m.writer.SendDDL(ctx, common.DDLToRedo(ddl))
+		return m.writer.WriteDDL(ctx, ddl)
 	})
 }
 
@@ -451,7 +464,8 @@ func (m *ManagerImpl) postFlushMeta(metaCheckpoint, metaResolved model.Ts) {
 }
 
 func (m *ManagerImpl) flushLog(
-	ctx context.Context, handleErr func(err error), workTimeSlice *time.Duration,
+	ctx context.Context, handleErr func(err error),
+	releaseMemoryCbs []func(), workTimeSlice *time.Duration,
 ) {
 	start := time.Now()
 	defer func() {
@@ -482,6 +496,9 @@ func (m *ManagerImpl) flushLog(
 		err := m.withLock(func(m *ManagerImpl) error {
 			return m.writer.FlushLog(ctx, metaCheckpoint, metaResolved)
 		})
+		for _, releaseMemory := range releaseMemoryCbs {
+			releaseMemory()
+		}
 		m.metricFlushLogDuration.Observe(time.Since(m.lastFlushTime).Seconds())
 		if err != nil {
 			handleErr(err)
@@ -536,18 +553,27 @@ func (m *ManagerImpl) bgUpdateLog(
 	}()
 
 	var err error
-	logs := make([]*model.RedoRowChangedEvent, 0, 1024*1024)
-	rtsMap := spanz.NewHashMap[model.Ts]()
 	releaseMemoryCbs := make([]func(), 0, 1024)
 
-	emitBatch := func(workTimeSlice *time.Duration) {
-		start := time.Now()
+	handleEvent := func(e cacheEvents, workTimeSlice *time.Duration) {
+		startHandleEvent := time.Now()
 		defer func() {
-			*workTimeSlice += time.Since(start)
+			*workTimeSlice += time.Since(startHandleEvent)
 		}()
-		if len(logs) > 0 {
+
+		switch e.eventType {
+		case model.MessageTypeRow:
+			if e.releaseMemory != nil {
+				releaseMemoryCbs = append(releaseMemoryCbs, e.releaseMemory)
+			}
+
+			var logs []writer.RedoEvent
+			for _, row := range e.rows {
+				logs = append(logs, row)
+			}
+
 			start := time.Now()
-			err = m.writer.WriteLog(ctx, logs)
+			err = m.writer.WriteLog(ctx, logs...)
 			writeLogElapse := time.Since(start)
 			log.Debug("redo manager writes rows",
 				zap.String("namespace", m.changeFeedID.Namespace),
@@ -557,33 +583,10 @@ func (m *ManagerImpl) bgUpdateLog(
 				zap.Duration("writeLogElapse", writeLogElapse))
 			m.metricTotalRowsCount.Add(float64(len(logs)))
 			m.metricWriteLogDuration.Observe(writeLogElapse.Seconds())
-
-			for _, releaseMemory := range releaseMemoryCbs {
-				releaseMemory()
-			}
-
-			if cap(logs) > 1024*1024 {
-				logs = make([]*model.RedoRowChangedEvent, 0, 1024*1024)
-			} else {
-				logs = logs[:0]
-			}
-			if cap(releaseMemoryCbs) > 1024 {
-				releaseMemoryCbs = make([]func(), 0, 1024)
-			} else {
-				releaseMemoryCbs = releaseMemoryCbs[:0]
-			}
-		}
-		if rtsMap.Len() > 0 {
-			rtsMap.Range(func(span tablepb.Span, resolvedTs uint64) bool {
-				m.onResolvedTsMsg(span, resolvedTs)
-				log.Debug("redo manager writes resolvedTs",
-					zap.String("namespace", m.changeFeedID.Namespace),
-					zap.String("changefeed", m.changeFeedID.ID),
-					zap.Stringer("span", &span),
-					zap.Uint64("resolvedTs", resolvedTs))
-				return true
-			})
-			rtsMap = spanz.NewHashMap[model.Ts]()
+		case model.MessageTypeResolved:
+			m.onResolvedTsMsg(e.span, e.resolvedTs)
+		default:
+			log.Panic("redo manager receives unknown event type")
 		}
 	}
 
@@ -592,78 +595,23 @@ func (m *ManagerImpl) bgUpdateLog(
 	var workTimeSlice time.Duration
 	startToWork := time.Now()
 	for {
-		if len(logs) > 0 || rtsMap.Len() > 0 {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				emitBatch(&workTimeSlice)
-				m.flushLog(ctx, handleErr, &workTimeSlice)
-			case cache, ok := <-m.logBuffer.Out():
-				if !ok {
-					return // channel closed
-				}
-				startToHandleEvent := time.Now()
-				switch cache.eventType {
-				case model.MessageTypeRow:
-					for _, row := range cache.rows {
-						logs = append(logs, common.RowToRedo(row))
-					}
-					if cache.releaseMemory != nil {
-						releaseMemoryCbs = append(releaseMemoryCbs, cache.releaseMemory)
-					}
-				case model.MessageTypeResolved:
-					if rtsMap.GetV(cache.span) < cache.resolvedTs {
-						rtsMap.ReplaceOrInsert(cache.span, cache.resolvedTs)
-					}
-				default:
-					log.Panic("redo manager receives unknown event type")
-				}
-				workTimeSlice += time.Since(startToHandleEvent)
-			case now := <-overseerTicker.C:
-				busyRatio := int(workTimeSlice.Seconds() / now.Sub(startToWork).Seconds() * 1000)
-				m.metricRedoWorkerBusyRatio.Add(float64(busyRatio))
-				startToWork = now
-				workTimeSlice = 0
-			case err = <-logErrCh:
-			default:
-				emitBatch(&workTimeSlice)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.flushLog(ctx, handleErr, releaseMemoryCbs, &workTimeSlice)
+			releaseMemoryCbs = make([]func(), 0, 1024)
+		case event, ok := <-m.logBuffer.Out():
+			if !ok {
+				return // channel closed
 			}
-		} else {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				emitBatch(&workTimeSlice)
-				m.flushLog(ctx, handleErr, &workTimeSlice)
-			case cache, ok := <-m.logBuffer.Out():
-				if !ok {
-					return // channel closed
-				}
-				startToHandleEvent := time.Now()
-				switch cache.eventType {
-				case model.MessageTypeRow:
-					for _, row := range cache.rows {
-						logs = append(logs, common.RowToRedo(row))
-					}
-					if cache.releaseMemory != nil {
-						releaseMemoryCbs = append(releaseMemoryCbs, cache.releaseMemory)
-					}
-				case model.MessageTypeResolved:
-					if rtsMap.GetV(cache.span) < cache.resolvedTs {
-						rtsMap.ReplaceOrInsert(cache.span, cache.resolvedTs)
-					}
-				default:
-					log.Panic("redo manager receives unknown event type")
-				}
-				workTimeSlice += time.Since(startToHandleEvent)
-			case now := <-overseerTicker.C:
-				busyRatio := int(workTimeSlice.Seconds() / now.Sub(startToWork).Seconds() * 1000)
-				m.metricRedoWorkerBusyRatio.Add(float64(busyRatio))
-				startToWork = now
-				workTimeSlice = 0
-			case err = <-logErrCh:
-			}
+			handleEvent(event, &workTimeSlice)
+		case now := <-overseerTicker.C:
+			busyRatio := int(workTimeSlice.Seconds() / now.Sub(startToWork).Seconds() * 1000)
+			m.metricRedoWorkerBusyRatio.Add(float64(busyRatio))
+			startToWork = now
+			workTimeSlice = 0
+		case err = <-logErrCh:
 		}
 		if err != nil {
 			log.Warn("redo manager writer meets write or flush fail",
@@ -682,6 +630,7 @@ func (m *ManagerImpl) bgUpdateLog(
 	}
 }
 
+// TODO: maybe GC should only be called from owner.
 func (m *ManagerImpl) bgGC(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(defaultGCIntervalInMs) * time.Millisecond)
 	defer ticker.Stop()

@@ -36,13 +36,23 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	_ RedoEvent = (*model.RowChangedEvent)(nil)
+	_ RedoEvent = (*model.DDLEvent)(nil)
+)
+
+// RedoEvent is the interface for redo event.
+type RedoEvent interface {
+	ToRedoLog() *model.RedoLog
+}
+
 // RedoLogWriter defines the interfaces used to write redo log, all operations are thread-safe.
 type RedoLogWriter interface {
-	// WriteLog writer RedoRowChangedEvent to row log file.
-	WriteLog(ctx context.Context, rows []*model.RedoRowChangedEvent) error
+	// WriteLog write RedoRowChangedEvent to row log file.
+	WriteLog(ctx context.Context, rows ...RedoEvent) error
 
-	// SendDDL writer RedoDDLEvent to ddl log file.
-	SendDDL(ctx context.Context, ddl *model.RedoDDLEvent) error
+	// WriteDDL write RedoDDLEvent to ddl log file.
+	WriteDDL(ctx context.Context, ddls ...RedoEvent) error
 
 	// FlushLog flushes all rows written by `WriteLog` into redo storage.
 	// `checkpointTs` and `resolvedTs` will be written into redo meta file.
@@ -72,7 +82,6 @@ func NewRedoLogWriter(
 	if err != nil {
 		return nil, err
 	}
-
 	scheme := uri.Scheme
 	if !redo.IsValidConsistentStorage(scheme) {
 		return nil, errors.ErrConsistentStorage.GenWithStackByArgs(scheme)
@@ -106,7 +115,10 @@ func NewRedoLogWriter(
 		lwCfg.Dir = uri.Path
 	}
 
-	return newLogWriter(ctx, lwCfg)
+	if cfg.UseFileBackend {
+		return newLogWriter(ctx, lwCfg)
+	}
+	return newMemoryLogWriter(ctx, lwCfg)
 }
 
 type logWriterConfig struct {
@@ -220,7 +232,7 @@ func (l *logWriter) preCleanUpS3(ctx context.Context) error {
 		return nil
 	}
 
-	files, err := getAllFilesInS3(ctx, l)
+	files, err := getAllFilesInS3(ctx, l.extStorage)
 	if err != nil {
 		return err
 	}
@@ -251,7 +263,6 @@ func (l *logWriter) initMeta(ctx context.Context) error {
 	}
 
 	l.meta = &common.LogMeta{}
-
 	data, err := os.ReadFile(l.filePath())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -282,7 +293,7 @@ func (l *logWriter) GC(ctx context.Context, ts model.Ts) error {
 }
 
 // WriteLog implement WriteLog api
-func (l *logWriter) WriteLog(ctx context.Context, rows []*model.RedoRowChangedEvent) error {
+func (l *logWriter) WriteLog(ctx context.Context, rows ...RedoEvent) error {
 	select {
 	case <-ctx.Done():
 		return errors.Trace(ctx.Err())
@@ -296,18 +307,22 @@ func (l *logWriter) WriteLog(ctx context.Context, rows []*model.RedoRowChangedEv
 		return nil
 	}
 
-	for _, r := range rows {
-		if r == nil || r.Row == nil {
+	for _, row := range rows {
+		if row == nil {
 			continue
 		}
+		r, ok := row.(*model.RowChangedEvent)
+		if !ok {
+			log.Panic("invalid RedoEvent type", zap.Any("row", row))
+		}
 
-		rl := &model.RedoLog{RedoRow: r, Type: model.RedoLogTypeRow}
+		rl := r.ToRedoLog()
 		data, err := rl.MarshalMsg(nil)
 		if err != nil {
 			return errors.WrapError(errors.ErrMarshalFailed, err)
 		}
 
-		l.rowWriter.AdvanceTs(r.Row.CommitTs)
+		l.rowWriter.AdvanceTs(r.CommitTs)
 		_, err = l.rowWriter.Write(data)
 		if err != nil {
 			return err
@@ -316,8 +331,8 @@ func (l *logWriter) WriteLog(ctx context.Context, rows []*model.RedoRowChangedEv
 	return nil
 }
 
-// SendDDL implement SendDDL api
-func (l *logWriter) SendDDL(ctx context.Context, ddl *model.RedoDDLEvent) error {
+// WriteDDL implement WriteDDL api
+func (l *logWriter) WriteDDL(ctx context.Context, ddls ...RedoEvent) error {
 	select {
 	case <-ctx.Done():
 		return errors.Trace(ctx.Err())
@@ -327,19 +342,29 @@ func (l *logWriter) SendDDL(ctx context.Context, ddl *model.RedoDDLEvent) error 
 	if l.isStopped() {
 		return errors.ErrRedoWriterStopped.GenWithStackByArgs()
 	}
-	if ddl == nil || ddl.DDL == nil {
-		return nil
-	}
 
-	rl := &model.RedoLog{RedoDDL: ddl, Type: model.RedoLogTypeDDL}
-	data, err := rl.MarshalMsg(nil)
-	if err != nil {
-		return errors.WrapError(errors.ErrMarshalFailed, err)
-	}
+	for _, ddl := range ddls {
+		if ddl == nil {
+			continue
+		}
+		d, ok := ddl.(*model.DDLEvent)
+		if !ok {
+			log.Panic("invalid RedoEvent type", zap.Any("event", ddl))
+		}
 
-	l.ddlWriter.AdvanceTs(ddl.DDL.CommitTs)
-	_, err = l.ddlWriter.Write(data)
-	return err
+		rl := d.ToRedoLog()
+		data, err := rl.MarshalMsg(nil)
+		if err != nil {
+			return errors.WrapError(errors.ErrMarshalFailed, err)
+		}
+
+		l.ddlWriter.AdvanceTs(d.CommitTs)
+		_, err = l.ddlWriter.Write(data)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // FlushLog implement FlushLog api
@@ -412,7 +437,7 @@ func (l *logWriter) DeleteAllLogs(ctx context.Context) (err error) {
 	}
 
 	var remoteFiles []string
-	remoteFiles, err = getAllFilesInS3(ctx, l)
+	remoteFiles, err = getAllFilesInS3(ctx, l.extStorage)
 	if err != nil {
 		return err
 	}
@@ -459,19 +484,6 @@ func (l *logWriter) deleteFilesInS3(ctx context.Context, files []string) error {
 		})
 	}
 	return eg.Wait()
-}
-
-var getAllFilesInS3 = func(ctx context.Context, l *logWriter) ([]string, error) {
-	files := []string{}
-	err := l.extStorage.WalkDir(ctx, &storage.WalkOption{}, func(path string, _ int64) error {
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		return nil, errors.WrapError(errors.ErrExternalStorageAPI, err)
-	}
-
-	return files, nil
 }
 
 // Close implements RedoLogWriter.Close.

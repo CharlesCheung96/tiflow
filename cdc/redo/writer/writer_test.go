@@ -42,7 +42,7 @@ import (
 func TestLogWriterWriteLog(t *testing.T) {
 	type arg struct {
 		ctx  context.Context
-		rows []*model.RedoRowChangedEvent
+		rows []RedoEvent
 	}
 	tests := []struct {
 		name      string
@@ -56,12 +56,8 @@ func TestLogWriterWriteLog(t *testing.T) {
 			name: "happy",
 			args: arg{
 				ctx: context.Background(),
-				rows: []*model.RedoRowChangedEvent{
-					{
-						Row: &model.RowChangedEvent{
-							Table: &model.TableName{TableID: 111}, CommitTs: 1,
-						},
-					},
+				rows: []RedoEvent{
+					&model.RowChangedEvent{Table: &model.TableName{TableID: 111}, CommitTs: 1},
 				},
 			},
 			isRunning: true,
@@ -71,13 +67,9 @@ func TestLogWriterWriteLog(t *testing.T) {
 			name: "writer err",
 			args: arg{
 				ctx: context.Background(),
-				rows: []*model.RedoRowChangedEvent{
-					{Row: nil},
-					{
-						Row: &model.RowChangedEvent{
-							Table: &model.TableName{TableID: 11}, CommitTs: 11,
-						},
-					},
+				rows: []RedoEvent{
+					nil,
+					&model.RowChangedEvent{Table: &model.TableName{TableID: 11}, CommitTs: 11},
 				},
 			},
 			writerErr: errors.New("err"),
@@ -88,7 +80,7 @@ func TestLogWriterWriteLog(t *testing.T) {
 			name: "len(rows)==0",
 			args: arg{
 				ctx:  context.Background(),
-				rows: []*model.RedoRowChangedEvent{},
+				rows: []RedoEvent{},
 			},
 			writerErr: errors.New("err"),
 			isRunning: true,
@@ -97,7 +89,7 @@ func TestLogWriterWriteLog(t *testing.T) {
 			name: "isStopped",
 			args: arg{
 				ctx:  context.Background(),
-				rows: []*model.RedoRowChangedEvent{},
+				rows: []RedoEvent{},
 			},
 			writerErr: cerror.ErrRedoWriterStopped,
 			isRunning: false,
@@ -107,7 +99,7 @@ func TestLogWriterWriteLog(t *testing.T) {
 			name: "context cancel",
 			args: arg{
 				ctx:  context.Background(),
-				rows: []*model.RedoRowChangedEvent{},
+				rows: []RedoEvent{},
 			},
 			writerErr: nil,
 			isRunning: true,
@@ -136,7 +128,7 @@ func TestLogWriterWriteLog(t *testing.T) {
 			tt.args.ctx = ctx
 		}
 
-		err := writer.WriteLog(tt.args.ctx, tt.args.rows)
+		err := writer.WriteLog(tt.args.ctx, tt.args.rows...)
 		if tt.wantErr != nil {
 			log.Info("want error", zap.Error(tt.wantErr))
 			log.Info("got error", zap.Error(err))
@@ -147,7 +139,7 @@ func TestLogWriterWriteLog(t *testing.T) {
 	}
 }
 
-func TestLogWriterSendDDL(t *testing.T) {
+func TestLogWriterWriteDDL(t *testing.T) {
 	type arg struct {
 		ctx     context.Context
 		tableID int64
@@ -237,7 +229,11 @@ func TestLogWriterSendDDL(t *testing.T) {
 			tt.args.ctx = ctx
 		}
 
-		err := writer.SendDDL(tt.args.ctx, tt.args.ddl)
+		var e RedoEvent
+		if tt.args.ddl != nil {
+			e = tt.args.ddl.DDL
+		}
+		err := writer.WriteDDL(tt.args.ctx, e)
 		if tt.wantErr != nil {
 			require.True(t, errors.ErrorEqual(tt.wantErr, err), tt.name)
 		} else {
@@ -556,7 +552,9 @@ func TestDeleteAllLogs(t *testing.T) {
 		require.Nil(t, err)
 
 		origin := getAllFilesInS3
-		getAllFilesInS3 = func(ctx context.Context, l *logWriter) ([]string, error) {
+		getAllFilesInS3 = func(
+			ctx context.Context, es storage.ExternalStorage,
+		) ([]string, error) {
 			return []string{fileName, fileName1}, tt.getAllFilesInS3Err
 		}
 		controller := gomock.NewController(t)
@@ -654,7 +652,9 @@ func TestPreCleanUpS3(t *testing.T) {
 		}
 		for _, cf := range cfs {
 			origin := getAllFilesInS3
-			getAllFilesInS3 = func(ctx context.Context, l *logWriter) ([]string, error) {
+			getAllFilesInS3 = func(
+				ctx context.Context, es storage.ExternalStorage,
+			) ([]string, error) {
 				if cf.Namespace == model.DefaultNamespace {
 					return []string{"1", "11", "delete_test-cf"}, tc.getAllFilesInS3Err
 				}

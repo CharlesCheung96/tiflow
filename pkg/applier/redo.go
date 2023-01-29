@@ -21,7 +21,6 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
-	"github.com/pingcap/tiflow/cdc/redo/common"
 	"github.com/pingcap/tiflow/cdc/redo/reader"
 	"github.com/pingcap/tiflow/cdc/sink"
 	"github.com/pingcap/tiflow/cdc/sink/mysql"
@@ -160,7 +159,7 @@ func (ra *RedoApplier) consumeLogs(ctx context.Context) error {
 				}
 				cachedRows = make([]*model.RowChangedEvent, 0, emitBatch)
 			}
-			cachedRows = append(cachedRows, common.LogToRow(redoLog))
+			cachedRows = append(cachedRows, model.LogToRow(redoLog))
 
 			if redoLog.Row.CommitTs > tableResolvedTsMap[tableID] {
 				tableResolvedTsMap[tableID], lastResolvedTs = lastResolvedTs, redoLog.Row.CommitTs
