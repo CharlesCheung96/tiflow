@@ -1,4 +1,4 @@
-// Copyright 2021 PingCAP, Inc.
+// Copyright 2023 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package redo
+package redov2
 
 import (
 	"context"
@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/processor/tablepb"
+	cdcRedo "github.com/pingcap/tiflow/cdc/redo"
 	"github.com/pingcap/tiflow/cdc/redo/writer"
 	"github.com/pingcap/tiflow/pkg/chann"
 	"github.com/pingcap/tiflow/pkg/config"
@@ -340,7 +341,7 @@ func TestManagerError(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	opts := NewMockManagerOptions(errCh)
+	opts := cdcRedo.NewMockManagerOptions(errCh)
 	opts.EnableBgRunner = false
 	opts.EnableGCRunner = false
 	logMgr, err := NewManager(ctx, cfg, opts)
@@ -405,7 +406,7 @@ func TestReuseWritter(t *testing.T) {
 	}
 
 	errCh := make(chan error, 1)
-	opts := NewMockManagerOptions(errCh)
+	opts := cdcRedo.NewMockManagerOptions(errCh)
 	for i := 0; i < 2; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		ctx = contextutil.PutChangefeedIDInCtx(ctx, model.ChangeFeedID{

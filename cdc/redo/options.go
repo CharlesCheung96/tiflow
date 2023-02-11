@@ -70,8 +70,8 @@ func NewManagerOptionsForClean() *ManagerOptions {
 	}
 }
 
-// newMockManagerOptions creates a manager options for mock tests.
-func newMockManagerOptions(errCh chan<- error) *ManagerOptions {
+// NewMockManagerOptions creates a manager options for mock tests.
+func NewMockManagerOptions(errCh chan<- error) *ManagerOptions {
 	return &ManagerOptions{
 		FileTypeConfig: redo.FileTypeConfig{
 			EmitMeta:      true,

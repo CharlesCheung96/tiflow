@@ -1,4 +1,4 @@
-// Copyright 2021 PingCAP, Inc.
+// Copyright 2023 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package redo
+package redov2
 
 import (
 	"context"
@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/contextutil"
 	"github.com/pingcap/tiflow/cdc/model"
 	"github.com/pingcap/tiflow/cdc/processor/tablepb"
+	cdcRedo "github.com/pingcap/tiflow/cdc/redo"
 	"github.com/pingcap/tiflow/cdc/redo/common"
 	"github.com/pingcap/tiflow/cdc/redo/writer"
 	"github.com/pingcap/tiflow/pkg/chann"
@@ -116,7 +117,7 @@ type ManagerImpl struct {
 	changeFeedID model.ChangeFeedID
 	enabled      bool
 
-	opts *ManagerOptions
+	opts *cdcRedo.ManagerOptions
 
 	// rtsMap stores flushed and unflushed resolved timestamps for all tables.
 	// it's just like map[span]*statefulRts.
@@ -150,7 +151,9 @@ type ManagerImpl struct {
 }
 
 // NewManager creates a new Manager
-func NewManager(ctx context.Context, cfg *config.ConsistentConfig, opts *ManagerOptions) (*ManagerImpl, error) {
+func NewManager(
+	ctx context.Context, cfg *config.ConsistentConfig, opts *cdcRedo.ManagerOptions,
+) (*ManagerImpl, error) {
 	// return a disabled Manager if no consistent config or normal consistent level
 	if cfg == nil || !redo.IsConsistentEnabled(cfg.Level) {
 		return &ManagerImpl{enabled: false}, nil
@@ -213,7 +216,7 @@ func NewMockManager(ctx context.Context) (*ManagerImpl, error) {
 	}
 
 	errCh := make(chan error, 1)
-	logMgr, err := NewManager(ctx, cfg, NewMockManagerOptions(errCh))
+	logMgr, err := NewManager(ctx, cfg, cdcRedo.NewProcessorManagerOptions(errCh))
 	if err != nil {
 		return nil, err
 	}
