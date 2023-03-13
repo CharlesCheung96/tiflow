@@ -73,7 +73,8 @@ func TestChangeFeedStatusMarshal(t *testing.T) {
 		ResolvedTs:   420875942036766723,
 		CheckpointTs: 420875940070686721,
 	}
-	expected := `{"resolved-ts":420875942036766723,"checkpoint-ts":420875940070686721,"admin-job-type":0}`
+	expected := `{"resolved-ts":420875942036766723,"checkpoint-ts":420875940070686721,
+"min-table-barrier-ts":0,"admin-job-type":0}`
 
 	data, err := status.Marshal()
 	require.Nil(t, err)
