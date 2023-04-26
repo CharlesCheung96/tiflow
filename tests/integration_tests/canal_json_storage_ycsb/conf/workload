@@ -1,0 +1,13 @@
+threadcount=10
+recordcount=50000
+workload=core
+fieldcount=3
+
+readallfields=true
+
+readproportion=0
+updateproportion=0
+scanproportion=0
+insertproportion=0
+
+requestdistribution=uniform
