@@ -465,6 +465,7 @@ func (s *Snapshot) DoHandleDDL(job *timodel.Job) error {
 			return errors.Trace(err)
 		}
 	case timodel.ActionExchangeTablePartition:
+		log.Error("exchange partition job", zap.Any("job", job))
 		err := s.inner.exchangePartition(getWrapTableInfo(job), job.BinlogInfo.FinishedTS)
 		if err != nil {
 			return errors.Trace(err)
