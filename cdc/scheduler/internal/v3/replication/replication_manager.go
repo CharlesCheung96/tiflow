@@ -491,6 +491,7 @@ func (r *Manager) RunningTasks() map[model.TableID]*ScheduleTask {
 func (r *Manager) AdvanceCheckpoint(
 	currentTables []model.TableID,
 	currentTime time.Time,
+	barrier schedulepb.BarrierWithMinTs,
 ) (newCheckpointTs, newResolvedTs model.Ts) {
 	newCheckpointTs, newResolvedTs = math.MaxUint64, math.MaxUint64
 	slowestTableID := int64(0)
@@ -519,6 +520,18 @@ func (r *Manager) AdvanceCheckpoint(
 	}
 	if slowestTableID != 0 {
 		r.slowestTableID = slowestTableID
+	}
+
+	// If currentTables is empty, we should advance newResolvedTs to global barrier ts and
+	// advance newCheckpointTs to min table barrier ts.
+	if newResolvedTs == math.MaxUint64 {
+		if newCheckpointTs != math.MaxUint64 {
+			log.Panic("newResolvedTs is max uint64 but newCheckpointTs is not",
+				zap.Uint64("newCheckpointTs", newCheckpointTs),
+				zap.Uint64("newResolvedTs", newResolvedTs))
+		}
+		newResolvedTs = barrier.GlobalBarrierTs
+		newCheckpointTs = barrier.MinTableBarrierTs
 	}
 
 	// If changefeed's checkpoint lag is larger than 30s,

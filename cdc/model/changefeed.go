@@ -459,26 +459,6 @@ func (info *ChangeFeedInfo) DownstreamType() (DownstreamType, error) {
 	return Unknown, nil
 }
 
-// Barrier is a barrier for changefeed.
-type Barrier struct {
-	GlobalBarrierTs   Ts             `json:"global-barrier-ts"`
-	TableBarrier      []TableBarrier `json:"table-barrier"`
-	MinTableBarrierTs Ts             `json:"min-table-barrier-ts"`
-}
-
-// TableBarrier is a barrier for a table.
-type TableBarrier struct {
-	ID        TableID `json:"id"`
-	BarrierTs Ts      `json:"barrier-ts"`
-}
-
-// NewBarrier creates a Barrier.
-func NewBarrier(ts Ts) *Barrier {
-	return &Barrier{
-		GlobalBarrierTs: ts,
-	}
-}
-
 // DownstreamType is the type of downstream.
 type DownstreamType int
 

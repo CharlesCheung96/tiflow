@@ -15,7 +15,6 @@ package owner
 
 import (
 	"context"
-	"math"
 	"sync"
 	"time"
 
@@ -303,11 +302,11 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		barrier.GlobalBarrierTs = otherBarrierTs
 	}
 
-	if barrier.minDDLBarrierTs > otherBarrierTs {
+	if barrier.MinTableBarrierTs > otherBarrierTs {
 		log.Debug("There are other barriers less than min table barrier, wait for them",
 			zap.Uint64("otherBarrierTs", otherBarrierTs),
 			zap.Uint64("ddlBarrierTs", barrier.GlobalBarrierTs))
-		barrier.minDDLBarrierTs = otherBarrierTs
+		barrier.MinTableBarrierTs = otherBarrierTs
 	}
 
 	log.Debug("owner handles barrier",
@@ -316,7 +315,7 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		zap.Uint64("checkpointTs", checkpointTs),
 		zap.Uint64("resolvedTs", c.state.Status.ResolvedTs),
 		zap.Uint64("globalBarrierTs", barrier.GlobalBarrierTs),
-		zap.Uint64("minTableBarrierTs", barrier.minDDLBarrierTs),
+		zap.Uint64("minTableBarrierTs", barrier.MinTableBarrierTs),
 		zap.Any("tableBarrier", barrier.TableBarriers))
 
 	if barrier.GlobalBarrierTs < checkpointTs {
@@ -326,20 +325,16 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		return nil
 	}
 
-	startTime := time.Now()
 	newCheckpointTs, newResolvedTs, err := c.scheduler.Tick(
-		ctx, checkpointTs, allPhysicalTables, captures, barrier.Barrier)
-	costTime := time.Since(startTime)
-	if costTime > schedulerLogsWarnDuration {
-		log.Warn("scheduler tick took too long",
-			zap.String("namespace", c.id.Namespace),
-			zap.String("changefeed", c.id.ID), zap.Duration("duration", costTime))
-	}
+		ctx, checkpointTs, allPhysicalTables, captures, barrier.BarrierWithMinTs)
 	if err != nil {
 		return errors.Trace(err)
 	}
 
-	pdTime, _ := c.upstream.PDClock.CurrentTime()
+	pdTime, err := c.upstream.PDClock.CurrentTime()
+	if err != nil {
+		return errors.Trace(err)
+	}
 	currentTs := oracle.GetPhysical(pdTime)
 
 	// CheckpointCannotProceed implies that not all tables are being replicated normally,
@@ -351,19 +346,6 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 			c.updateMetrics(currentTs, c.state.Status.CheckpointTs, c.state.Status.ResolvedTs)
 		}
 		return nil
-	}
-
-	// If the owner is just initialized, the newResolvedTs may be max uint64.
-	// In this case, we should not update the resolved ts.
-	if newResolvedTs == math.MaxUint64 {
-		newResolvedTs = c.state.Status.ResolvedTs
-	}
-
-	// If the owner is just initialized, minTableBarrierTs can be `checkpointTs-1`.
-	// In such case the `newCheckpointTs` may be larger than the minTableBarrierTs,
-	// but it shouldn't be, so we need to handle it here.
-	if newCheckpointTs > barrier.minDDLBarrierTs {
-		newCheckpointTs = barrier.minDDLBarrierTs
 	}
 
 	prevResolvedTs := c.state.Status.ResolvedTs
@@ -391,6 +373,9 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		} else {
 			newResolvedTs = prevResolvedTs
 		}
+		if newCheckpointTs > prevResolvedTs {
+			newCheckpointTs = prevResolvedTs
+		}
 	}
 	log.Debug("owner prepares to update status",
 		zap.Uint64("prevResolvedTs", prevResolvedTs),
@@ -405,8 +390,8 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 	}
 
 	// MinTableBarrierTs should never regress
-	if barrier.minDDLBarrierTs < c.state.Status.MinTableBarrierTs {
-		barrier.minDDLBarrierTs = c.state.Status.MinTableBarrierTs
+	if barrier.MinTableBarrierTs < c.state.Status.MinTableBarrierTs {
+		barrier.MinTableBarrierTs = c.state.Status.MinTableBarrierTs
 	}
 
 	failpoint.Inject("ChangefeedOwnerDontUpdateCheckpoint", func() {
@@ -420,7 +405,7 @@ func (c *changefeed) tick(ctx cdcContext.Context, captures map[model.CaptureID]*
 		}
 	})
 
-	c.updateStatus(newCheckpointTs, newResolvedTs, barrier.minDDLBarrierTs)
+	c.updateStatus(newCheckpointTs, newResolvedTs, barrier.MinTableBarrierTs)
 	c.updateMetrics(currentTs, newCheckpointTs, newResolvedTs)
 
 	return nil
@@ -893,6 +878,11 @@ func (c *changefeed) updateMetrics(currentTs int64, checkpointTs, resolvedTs mod
 }
 
 func (c *changefeed) updateStatus(checkpointTs, resolvedTs, minTableBarrierTs model.Ts) {
+	if checkpointTs > resolvedTs {
+		log.Panic("checkpointTs is greater than resolvedTs",
+			zap.Uint64("checkpointTs", checkpointTs),
+			zap.Uint64("resolvedTs", resolvedTs))
+	}
 	c.state.PatchStatus(
 		func(status *model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error) {
 			changed := false

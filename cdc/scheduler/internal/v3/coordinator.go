@@ -117,7 +117,7 @@ func (c *coordinator) Tick(
 	currentTables []model.TableID,
 	// All captures that are alive according to the latest Etcd states.
 	aliveCaptures map[model.CaptureID]*model.CaptureInfo,
-	barrier *schedulepb.Barrier,
+	barrier schedulepb.BarrierWithMinTs,
 ) (newCheckpointTs, newResolvedTs model.Ts, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -249,7 +249,7 @@ func (c *coordinator) poll(
 	checkpointTs model.Ts,
 	currentTables []model.TableID,
 	aliveCaptures map[model.CaptureID]*model.CaptureInfo,
-	barrier *schedulepb.Barrier,
+	barrier schedulepb.BarrierWithMinTs,
 ) (newCheckpointTs, newResolvedTs model.Ts, err error) {
 	c.maybeCollectMetrics()
 	if c.compat.UpdateCaptureInfo(aliveCaptures) {
@@ -265,7 +265,7 @@ func (c *coordinator) poll(
 	var msgBuf []*schedulepb.Message
 	c.captureM.HandleMessage(recvMsgs)
 	msgs := c.captureM.Tick(c.replicationM.ReplicationSets(),
-		c.schedulerM.DrainingTarget(), barrier)
+		c.schedulerM.DrainingTarget(), barrier.Barrier)
 	msgBuf = append(msgBuf, msgs...)
 	msgs = c.captureM.HandleAliveCaptureUpdate(aliveCaptures)
 	msgBuf = append(msgBuf, msgs...)
@@ -289,7 +289,7 @@ func (c *coordinator) poll(
 	if !c.captureM.CheckAllCaptureInitialized() {
 		// Skip generating schedule tasks for replication manager,
 		// as not all capture are initialized.
-		newCheckpointTs, newResolvedTs = c.replicationM.AdvanceCheckpoint(currentTables, pdTime)
+		newCheckpointTs, newResolvedTs = c.replicationM.AdvanceCheckpoint(currentTables, pdTime, barrier)
 		return newCheckpointTs, newResolvedTs, c.sendMsgs(ctx, msgBuf)
 	}
 
@@ -323,7 +323,7 @@ func (c *coordinator) poll(
 	}
 
 	// Checkpoint calculation
-	newCheckpointTs, newResolvedTs = c.replicationM.AdvanceCheckpoint(currentTables, pdTime)
+	newCheckpointTs, newResolvedTs = c.replicationM.AdvanceCheckpoint(currentTables, pdTime, barrier)
 	return newCheckpointTs, newResolvedTs, nil
 }
 
