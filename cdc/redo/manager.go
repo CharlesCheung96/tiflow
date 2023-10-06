@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/tidb/br/pkg/storage"
 	"github.com/pingcap/tiflow/cdc/model"
@@ -431,6 +432,16 @@ func (m *logManager) flushLog(
 			zap.String("namespace", m.cfg.ChangeFeedID.Namespace),
 			zap.String("changefeed", m.cfg.ChangeFeedID.ID),
 			zap.Any("tableRtsMap", tableRtsMap))
+
+		failpoint.Inject("RedoFlushLogHangLongTime", func() {
+			if m.cfg.LogType == redo.RedoRowLogFileType {
+				log.Warn("redo flush log will hang for one hour since failpoint enabled",
+					zap.Any("changefeed", m.cfg.ChangeFeedID),
+					zap.Any("config", m.cfg))
+				_ = util.Hang(ctx, time.Hour)
+			}
+		})
+
 		err := m.withLock(func(m *logManager) error {
 			return m.writer.FlushLog(ctx)
 		})
