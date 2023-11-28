@@ -567,6 +567,7 @@ type CloudStorageConfig struct {
 	FileSize      *int    `toml:"file-size" json:"file-size,omitempty"`
 
 	FlushConcurrency    *int    `toml:"flush-concurrency" json:"flush-concurrency,omitempty"`
+	EncodingConcurrency *int    `toml:"encoding-concurrency" json:"encoding-concurrency,omitempty"`
 	OutputColumnID      *bool   `toml:"output-column-id" json:"output-column-id,omitempty"`
 	FileExpirationDays  *int    `toml:"file-expiration-days" json:"file-expiration-days,omitempty"`
 	FileCleanupCronSpec *string `toml:"file-cleanup-cron-spec" json:"file-cleanup-cron-spec,omitempty"`

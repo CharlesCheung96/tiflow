@@ -53,6 +53,13 @@ const (
 	// the upper limit of file size
 	maxFileSize = 512 * 1024 * 1024
 
+	// defaultEncodingConcurrency is the default value of encoding-concurrency.
+	defaultEncodingConcurrency = 8
+	// the lower limit of encoding-concurrency.
+	minEncodingConcurrency = 8
+	// the upper limit of encoding-concurrency.
+	maxEncodingConcurrency = 512
+
 	// disable file cleanup by default
 	defaultFileExpirationDays = 0
 	// Second | Minute | Hour | Dom | Month | DowOptional
@@ -72,6 +79,7 @@ type Config struct {
 	EnablePartitionSeparator bool
 	OutputColumnID           bool
 	FlushConcurrency         int
+	EncodingConcurrency      int
 }
 
 // NewConfig returns the default cloud storage sink config.
@@ -120,6 +128,7 @@ func (c *Config) Apply(
 	if replicaConfig.Sink.CloudStorageConfig != nil {
 		c.OutputColumnID = util.GetOrZero(replicaConfig.Sink.CloudStorageConfig.OutputColumnID)
 		c.FlushConcurrency = util.GetOrZero(replicaConfig.Sink.CloudStorageConfig.FlushConcurrency)
+		c.EncodingConcurrency = util.GetOrZero(replicaConfig.Sink.CloudStorageConfig.EncodingConcurrency)
 		if replicaConfig.Sink.CloudStorageConfig.FileExpirationDays != nil {
 			c.FileExpirationDays = *replicaConfig.Sink.CloudStorageConfig.FileExpirationDays
 		}
@@ -133,6 +142,9 @@ func (c *Config) Apply(
 	}
 	if c.FlushConcurrency < minFlushConcurrency || c.FlushConcurrency > maxFlushConcurrency {
 		c.FlushConcurrency = defaultFlushConcurrency
+	}
+	if c.EncodingConcurrency < minEncodingConcurrency || c.EncodingConcurrency > maxEncodingConcurrency {
+		c.EncodingConcurrency = defaultEncodingConcurrency
 	}
 
 	return nil
