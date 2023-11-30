@@ -150,7 +150,7 @@ func NewCloudStorageSink(
 		s.encodingWorkers[i] = newEncodingWorker(i, s.changefeedID, encoder, s.alive.msgCh.Out(), encodedCh)
 	}
 	// create defragmenter.
-	s.defragmenter = newDefragmenter(encodedCh, workerChannels)
+	s.defragmenter = newDefragmenter(s.changefeedID, encodedCh, workerChannels)
 	// create a group of dml workers.
 	clock := clock.New()
 	for i := 0; i < cfg.WorkerCount; i++ {

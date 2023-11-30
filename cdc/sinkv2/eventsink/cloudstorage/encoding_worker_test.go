@@ -61,7 +61,7 @@ func TestEncodeEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	eg, egCtx := errgroup.WithContext(ctx)
 	outputChs := []*chann.DrainableChann[eventFragment]{chann.NewDrainableChann[eventFragment]()}
-	defragmenter := newDefragmenter(encodedCh, outputChs)
+	defragmenter := newDefragmenter(model.ChangeFeedID{}, encodedCh, outputChs)
 	eg.Go(func() error {
 		return defragmenter.run(egCtx)
 	})
@@ -137,7 +137,7 @@ func TestEncodingWorkerRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	eg, egCtx := errgroup.WithContext(ctx)
 	outputChs := []*chann.DrainableChann[eventFragment]{chann.NewDrainableChann[eventFragment]()}
-	defragmenter := newDefragmenter(encodedCh, outputChs)
+	defragmenter := newDefragmenter(model.ChangeFeedID{}, encodedCh, outputChs)
 	eg.Go(func() error {
 		return defragmenter.run(egCtx)
 	})
