@@ -570,4 +570,5 @@ type CloudStorageConfig struct {
 	OutputColumnID      *bool   `toml:"output-column-id" json:"output-column-id,omitempty"`
 	FileExpirationDays  *int    `toml:"file-expiration-days" json:"file-expiration-days,omitempty"`
 	FileCleanupCronSpec *string `toml:"file-cleanup-cron-spec" json:"file-cleanup-cron-spec,omitempty"`
+	EncodingWorkerNum   *int    `toml:"encoding-worker-num" json:"encoding-worker-num,omitempty"`
 }

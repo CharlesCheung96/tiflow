@@ -346,6 +346,7 @@ func (c *ReplicaConfig) toInternalReplicaConfigWithOriginConfig(
 				OutputColumnID:      c.Sink.CloudStorageConfig.OutputColumnID,
 				FileExpirationDays:  c.Sink.CloudStorageConfig.FileExpirationDays,
 				FileCleanupCronSpec: c.Sink.CloudStorageConfig.FileCleanupCronSpec,
+				EncodingWorkerNum:   c.Sink.CloudStorageConfig.EncodingWorkerNum,
 			}
 		}
 	}
@@ -487,6 +488,7 @@ func ToAPIReplicaConfig(c *config.ReplicaConfig) *ReplicaConfig {
 				OutputColumnID:      cloned.Sink.CloudStorageConfig.OutputColumnID,
 				FileExpirationDays:  cloned.Sink.CloudStorageConfig.FileExpirationDays,
 				FileCleanupCronSpec: cloned.Sink.CloudStorageConfig.FileCleanupCronSpec,
+				EncodingWorkerNum:   cloned.Sink.CloudStorageConfig.EncodingWorkerNum,
 			}
 		}
 	}
@@ -649,6 +651,7 @@ type CloudStorageConfig struct {
 	OutputColumnID      *bool   `json:"output_column_id,omitempty"`
 	FileExpirationDays  *int    `json:"file_expiration_days,omitempty"`
 	FileCleanupCronSpec *string `json:"file_cleanup_cron_spec,omitempty"`
+	EncodingWorkerNum   *int    `json:"encoding_worker_num,omitempty"`
 }
 
 // CSVConfig denotes the csv config
