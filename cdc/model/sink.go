@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -762,11 +761,6 @@ type SingleTableTxn struct {
 	StartTs  uint64
 	CommitTs uint64
 	Rows     []*RowChangedEvent
-
-	// control fields of SingleTableTxn
-	// FinishWg is a barrier txn, after this txn is received, the worker must
-	// flush cached txns and call FinishWg.Done() to mark txns have been flushed.
-	FinishWg *sync.WaitGroup
 }
 
 // GetCommitTs returns the commit timestamp of the transaction.
@@ -906,9 +900,4 @@ func (t *SingleTableTxn) Append(row *RowChangedEvent) {
 			zap.Any("row", row))
 	}
 	t.Rows = append(t.Rows, row)
-}
-
-// ToWaitFlush indicates whether to wait flushing after the txn is processed or not.
-func (t *SingleTableTxn) ToWaitFlush() bool {
-	return t.FinishWg != nil
 }
