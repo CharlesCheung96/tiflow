@@ -477,6 +477,7 @@ func (w *regionWorker) eventHandler(ctx context.Context) error {
 		}
 		atomic.AddInt32(&w.inputPending, -int32(len(events)))
 
+		highWatermarkMet = false
 		if highWatermarkMet {
 			// All events in one batch can be hashed into one handle slot.
 			slot := w.inputCalcSlot(events[0].regionID)
