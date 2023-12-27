@@ -477,7 +477,7 @@ func (w *regionWorker) eventHandler(ctx context.Context) error {
 		}
 		atomic.AddInt32(&w.inputPending, -int32(len(events)))
 
-		highWatermarkMet = false
+		highWatermarkMet = true
 		if highWatermarkMet {
 			// All events in one batch can be hashed into one handle slot.
 			slot := w.inputCalcSlot(events[0].regionID)
@@ -499,18 +499,18 @@ func (w *regionWorker) eventHandler(ctx context.Context) error {
 			// Send a dummy event to each worker pool handler, after each of these
 			// events are processed, we can ensure all events sent to worker pool
 			// from this region worker are processed.
-			finishedCallbackCh := make(chan struct{}, 1)
-			err = w.handles[slot].AddEvent(ctx, &regionStatefulEvent{finishedCallbackCh: finishedCallbackCh})
-			if err != nil {
-				return err
-			}
-			select {
-			case <-ctx.Done():
-				return errors.Trace(ctx.Err())
-			case err = <-w.errorCh:
-				return err
-			case <-finishedCallbackCh:
-			}
+			// finishedCallbackCh := make(chan struct{}, 1)
+			// err = w.handles[slot].AddEvent(ctx, &regionStatefulEvent{finishedCallbackCh: finishedCallbackCh})
+			// if err != nil {
+			// 	return err
+			// }
+			// select {
+			// case <-ctx.Done():
+			// 	return errors.Trace(ctx.Err())
+			// case err = <-w.errorCh:
+			// 	return err
+			// case <-finishedCallbackCh:
+			// }
 		} else {
 			// We measure whether the current worker is busy based on the input
 			// channel size. If the buffered event count is larger than the high
