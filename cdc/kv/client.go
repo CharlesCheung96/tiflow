@@ -1137,6 +1137,7 @@ func (s *eventFeedSession) receiveFromStream(
 			}
 
 			startToProcess := time.Now()
+			time.Sleep(time.Millisecond * 10)
 			size := cevent.Size()
 			if size > warnRecvMsgSizeThreshold {
 				regionCount := 0

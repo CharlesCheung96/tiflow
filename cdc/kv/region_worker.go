@@ -383,7 +383,6 @@ func (w *regionWorker) processEvent(ctx context.Context, event *regionStatefulEv
 		w.metrics.metricReceivedEventSize.Observe(float64(event.changeEvent.Event.Size()))
 		switch x := event.changeEvent.Event.(type) {
 		case *cdcpb.Event_Entries_:
-			time.Sleep(time.Millisecond * 10)
 			err = w.handleEventEntry(ctx, x, event.state)
 			if err != nil {
 				err = w.handleSingleRegionError(err, event.state)
