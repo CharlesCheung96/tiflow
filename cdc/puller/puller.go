@@ -232,6 +232,7 @@ func (p *pullerImpl) Run(ctx context.Context) error {
 			}
 
 			if e.Val != nil {
+				time.Sleep(time.Microsecond * 10)
 				metricTxnCollectCounterKv.Inc()
 				if err := output(e.Val); err != nil {
 					return errors.Trace(err)

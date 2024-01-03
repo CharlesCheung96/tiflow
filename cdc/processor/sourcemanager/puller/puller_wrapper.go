@@ -16,7 +16,6 @@ package puller
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
@@ -135,7 +134,6 @@ func (n *Wrapper) Start(
 				if rawKV == nil {
 					continue
 				}
-				time.Sleep(time.Microsecond * 10)
 				pEvent := model.NewPolymorphicEvent(rawKV)
 				eventSortEngine.Add(n.tableID, pEvent)
 			}
