@@ -474,6 +474,7 @@ func (w *regionWorker) eventHandler(ctx context.Context, enableTableMonitor bool
 			if !ok {
 				return exitFn()
 			}
+			time.Sleep(time.Microsecond * 10)
 			if len(events) == 0 {
 				log.Panic("regionWorker.inputCh doesn't accept empty slice")
 			}
