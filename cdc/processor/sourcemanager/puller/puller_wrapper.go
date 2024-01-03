@@ -135,7 +135,8 @@ func (n *Wrapper) Start(
 					continue
 				}
 				pEvent := model.NewPolymorphicEvent(rawKV)
-				eventSortEngine.Add(n.tableID, pEvent)
+				_ = pEvent
+				// eventSortEngine.Add(n.tableID, pEvent)
 			}
 		}
 	}()
