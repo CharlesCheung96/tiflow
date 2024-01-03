@@ -21,6 +21,11 @@ const (
   "force-replicate": true,
   "check-gc-safe-point": true,
   "enable-sync-point": false,
+<<<<<<< HEAD
+=======
+  "enable-table-monitor": false,
+  "bdr-mode": false,
+>>>>>>> 8fc0bff9c (Update metrics.go)
   "sync-point-interval": 600000000000,
   "sync-point-retention": 86400000000000,
   "filter": {
@@ -175,6 +180,7 @@ const (
   "force-replicate": true,
   "check-gc-safe-point": true,
   "enable-sync-point": false,
+  "enable-table-monitor": false,
   "bdr-mode": false,
   "sync-point-interval": 600000000000,
   "sync-point-retention": 86400000000000,
@@ -248,6 +254,7 @@ const (
   "force-replicate": true,
   "check-gc-safe-point": true,
   "enable-sync-point": false,
+  "enable-table-monitor": false,
   "bdr-mode": false,
   "sync-point-interval": 600000000000,
   "sync-point-retention": 86400000000000,
