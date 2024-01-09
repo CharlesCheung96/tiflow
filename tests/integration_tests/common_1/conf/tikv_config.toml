@@ -1,0 +1,12 @@
+[storage]
+reserve-space = "0MB"
+
+[rocksdb.titan]
+enabled = true
+
+[rocksdb.defaultcf.titan]
+min-blob-size = '0B'
+
+[rocksdb.writecf.titan]
+blob-run-mode = 'normal'
+min-blob-size = '0B'
