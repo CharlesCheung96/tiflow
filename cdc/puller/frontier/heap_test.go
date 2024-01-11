@@ -14,6 +14,7 @@
 package frontier
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
@@ -64,6 +65,81 @@ func TestUpdateTs(t *testing.T) {
 		if expectedMin > key {
 			expectedMin = key
 		}
+	}
+}
+
+func TestRandomUpdateTs(t *testing.T) {
+	t.Parallel()
+	seed := time.Now().Unix()
+	rand.Seed(seed)
+	var heap fibonacciHeap
+	nodes := make([]*fibonacciHeapNode, 20000)
+	expectedMin := uint64(math.MaxUint64)
+	expectedIdx := 0
+	for i := range nodes {
+		key := 10000 + uint64(rand.Intn(len(nodes)/2))
+		nodes[i] = heap.Insert(key)
+		if expectedMin > key {
+			expectedMin = key
+			expectedIdx = i
+		}
+	}
+
+	var key uint64
+	lastOp := "Init"
+	for i := 0; i < 100000; i++ {
+		min := heap.GetMinKey()
+		if min != expectedMin {
+			root := heap.root
+			fmt.Printf("root key: %d\n", root.key)
+
+			next := root.left
+			nodeCnt := 0
+			minKey := root.key
+			for next != nil && next != root {
+				nodeCnt++
+				fmt.Printf("cnt: %d, key: %d\n", nodeCnt, next.key)
+				if next.key < min {
+					min = next.key
+				}
+				next = next.left
+			}
+			fmt.Printf("minKey: %d, expectedMin: %d, expectedMinIdx: %d\n", minKey, expectedMin, nodes[expectedIdx].key)
+		}
+		require.Equal(t, expectedMin, min,
+			"seed:%d, lastOperation: %s, lastKey: %d, expected: %d, actual: %d",
+			seed, lastOp, key, expectedMin, min)
+
+		// update a random node
+		idx := rand.Intn(len(nodes))
+		delta := rand.Uint64() % 10000
+		if rand.Intn(2) == 0 {
+			if nodes[idx].key > math.MaxUint64-delta {
+				t.Fatal("overflow")
+			}
+			key = nodes[idx].key + delta
+			heap.UpdateKey(nodes[idx], key)
+			lastOp = "Increase"
+		} else {
+			if delta > nodes[idx].key {
+				delta = nodes[idx].key
+			}
+			key = nodes[idx].key - delta
+			heap.UpdateKey(nodes[idx], key)
+			lastOp = "Decrease"
+		}
+		require.Equal(t, key, nodes[idx].key)
+		if expectedMin > key {
+			expectedMin = key
+			expectedIdx = idx
+		}
+		if expectedMin == 0 {
+			fmt.Printf("expectedMin: %d, expectedMinIdx: %d, key: %d, addr: %+v\n",
+				expectedMin, expectedIdx, nodes[expectedIdx].key, nodes[expectedIdx])
+		}
+		require.Equal(t, expectedMin, nodes[expectedIdx].key,
+			"seed:%d, lastOperation: %s, lastKey: %d, expected: %d, actual: %d",
+			seed, lastOp, key, expectedMin, min)
 	}
 }
 
