@@ -503,7 +503,6 @@ func (c *changefeed) initialize(ctx cdcContext.Context) (err error) {
 		return nil
 	}
 	c.isReleased = false
-	c.metricsChangefeedCreateTimeGuage.Set(float64(c.latestInfo.CreateTime.Second()))
 
 	// clean the errCh
 	// When the changefeed is resumed after being stopped, the changefeed instance will be reused,
@@ -688,6 +687,7 @@ LOOP2:
 	c.initMetrics()
 
 	c.initialized = true
+	c.metricsChangefeedCreateTimeGuage.Set(float64(c.latestInfo.CreateTime.Second()))
 	c.metricsChangefeedRestartTimeGauge.SetToCurrentTime()
 	log.Info("changefeed initialized",
 		zap.String("namespace", c.id.Namespace),
