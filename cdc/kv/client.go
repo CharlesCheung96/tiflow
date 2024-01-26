@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -1082,7 +1081,7 @@ func (s *eventFeedSession) receiveFromStream(
 				// these two errors often mean upstream store suffers an accident, which
 				// needs time to recover, kv client doesn't need to retry frequently.
 				// TODO: add a better retry backoff or rate limitter
-				time.Sleep(time.Millisecond * time.Duration(rand.Intn(100)))
+				time.Sleep(time.Second * 5)
 
 				// TODO: better to closes the send direction of the stream to notify
 				// the other side, but it is not safe to call CloseSend concurrently

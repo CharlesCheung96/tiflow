@@ -197,6 +197,9 @@ func (w *regionWorker) checkShouldExit() error {
 	// If there is no region maintained by this region worker, exit it and
 	// cancel the gRPC stream.
 	if empty && w.pendingRegions.len() == 0 {
+		log.Info("cancel stream in region worker", zap.String("addr", w.storeAddr),
+			zap.String("namespace", w.session.client.changefeed.Namespace),
+			zap.String("changefeed", w.session.client.changefeed.ID))
 		w.cancelStream(time.Duration(0))
 		return cerror.ErrRegionWorkerExit.GenWithStackByArgs()
 	}
@@ -238,6 +241,9 @@ func (w *regionWorker) handleSingleRegionError(err error, state *regionFeedState
 	// `ErrPrewriteNotMatch` would cause duplicated request to the same region,
 	// so cancel the original gRPC stream before restarts a new stream.
 	if cerror.ErrPrewriteNotMatch.Equal(err) {
+		log.Info("cancel stream since ErrPrewriteNotMatch in region worker", zap.String("addr", w.storeAddr),
+			zap.String("namespace", w.session.client.changefeed.Namespace),
+			zap.String("changefeed", w.session.client.changefeed.ID))
 		w.cancelStream(time.Second)
 	}
 
