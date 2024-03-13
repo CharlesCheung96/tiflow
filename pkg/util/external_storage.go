@@ -63,12 +63,19 @@ func GetExternalStorage(
 	opts *storage.BackendOptions,
 	retryer request.Retryer,
 ) (storage.ExternalStorage, error) {
+	u, err := storage.ParseRawURL(uri)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	disableCrentials := u.Query().Get("no-credentials")
+
 	backEnd, err := storage.ParseBackend(uri, opts)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 
 	ret, err := storage.New(ctx, backEnd, &storage.ExternalStorageOptions{
+		NoCredentials:   disableCrentials == "true",
 		SendCredentials: false,
 		S3Retryer:       retryer,
 	})
