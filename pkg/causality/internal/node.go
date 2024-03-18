@@ -125,7 +125,7 @@ func (n *Node) DependOn(dependencyNodes map[int64]*Node, noDependencyKeyCnt int)
 	// Re-allocate ID in `DependOn` instead of creating the node, because the node can be
 	// pending in slots after it's created.
 	// ?: why gen new ID here?
-	n.id = genNextNodeID()
+	// n.id = genNextNodeID()
 
 	// `totalDependcies` must be initialized before depending on any targets.
 	n.totalDependencies = int32(len(dependencyNodes) + noDependencyKeyCnt)
@@ -164,7 +164,7 @@ func (n *Node) Remove() {
 // Free implements interface internal.SlotNode.
 // It must be called if a node is no longer used.
 // We are using sync.Pool to lessen the burden of GC.
-func (n *Node) Free() {
+func (n *Node) free() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.id == invalidNodeID {
@@ -179,6 +179,10 @@ func (n *Node) Free() {
 	// The reason is a node can step functions `assignTo`, `Remove`, `Free`, then `assignTo`.
 	// again. In the last `assignTo`, it can never know whether the node has been reused
 	// or not.
+}
+
+func (n *Node) self() *Node {
+	return n
 }
 
 // assigns a node to a worker. Returns `true` on success.
@@ -205,8 +209,8 @@ func (n *Node) assign() bool {
 // Please attention that maybeReadyToRun maybe called after the node is removed.
 // Consider the following scenario:
 // A only depends B, and B call B's remove first, and reduce A's removedDependencies to 0
-// Then A just call A's maybeReadyToRun, and assign to a worker and remove itself
-// Simultaneously, B call A's maybeReadyToRun.
+// Then A call A's maybeReadyToRun, and assign to a worker and remove itself in A.Remove().
+// Simultaneously, B call A's maybeReadyToRun in B.Remove().
 // Thus maybeReadyToRun maybe called after the node is removed.
 func (n *Node) maybeReadyToRun() {
 	if ok := n.checkReadiness(); ok {

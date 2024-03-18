@@ -27,14 +27,14 @@ func TestNodeFree(t *testing.T) {
 	// will race with NewNode() in other cases.
 
 	nodeA := NewNode()
-	nodeA.Free()
+	nodeA.free()
 
 	nodeA = NewNode()
-	nodeA.Free()
+	nodeA.free()
 
 	// Double freeing should panic.
 	require.Panics(t, func() {
-		nodeA.Free()
+		nodeA.free()
 	})
 }
 

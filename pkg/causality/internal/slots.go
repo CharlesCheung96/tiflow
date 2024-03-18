@@ -18,8 +18,8 @@ import (
 	"sync"
 )
 
-type slot[E SlotNode[E]] struct {
-	nodes map[uint64]E
+type slot[T any] struct {
+	nodes map[uint64]SlotNode[T]
 	mu    sync.Mutex
 }
 
@@ -31,33 +31,36 @@ type SlotNode[T any] interface {
 	DependOn(dependencyNodes map[int64]T, noDependencyKeyCnt int)
 	// Remove the node itself and notify all dependers.
 	Remove()
-	// Free the node itself and remove it from the graph.
-	Free()
+
+	// free the node itself and remove it from the graph.
+	free()
+	// Self returns the node itself.
+	self() T
 }
 
 // Slots implements slot-based conflict detection.
 // It holds references to E, which can be used to build
 // a DAG of dependency.
-type Slots[E SlotNode[E]] struct {
-	slots    []slot[E]
+type Slots[T any] struct {
+	slots    []slot[T]
 	numSlots uint64
 }
 
 // NewSlots creates a new Slots.
-func NewSlots[E SlotNode[E]](numSlots uint64) *Slots[E] {
-	slots := make([]slot[E], numSlots)
+func NewSlots[T any](numSlots uint64) *Slots[T] {
+	slots := make([]slot[T], numSlots)
 	for i := uint64(0); i < numSlots; i++ {
-		slots[i].nodes = make(map[uint64]E, 8)
+		slots[i].nodes = make(map[uint64]SlotNode[T], 8)
 	}
-	return &Slots[E]{
+	return &Slots[T]{
 		slots:    slots,
 		numSlots: numSlots,
 	}
 }
 
 // Add adds an elem to the slots and calls DependOn for elem.
-func (s *Slots[E]) Add(elem E, hashes []uint64) {
-	dependencyNodes := make(map[int64]E, len(hashes))
+func (s *Slots[T]) Add(elem SlotNode[T], hashes []uint64) {
+	dependencyNodes := make(map[int64]T, len(hashes))
 	noDependecyCnt := 0
 
 	var lastSlot uint64 = math.MaxUint64
@@ -66,6 +69,8 @@ func (s *Slots[E]) Add(elem E, hashes []uint64) {
 		slotIdx := getSlot(hash, s.numSlots)
 		if lastSlot != slotIdx {
 			s.slots[slotIdx].mu.Lock()
+			defer s.slots[slotIdx].mu.Unlock()
+
 			lastSlot = slotIdx
 		}
 
@@ -75,7 +80,7 @@ func (s *Slots[E]) Add(elem E, hashes []uint64) {
 			prevID := prevNode.NodeID()
 			// If there are multiple hashes conflicts with the same node, we only need to
 			// depend on the node once.
-			dependencyNodes[prevID] = prevNode
+			dependencyNodes[prevID] = prevNode.self()
 		} else {
 			noDependecyCnt += 1
 		}
@@ -87,21 +92,10 @@ func (s *Slots[E]) Add(elem E, hashes []uint64) {
 	// Construct the dependency graph based on collected `dependencyNodes` and with corresponding
 	// slots locked.
 	elem.DependOn(dependencyNodes, noDependecyCnt)
-
-	// Lock those slots one by one and then unlock them one by one, so that
-	// we can avoid 2 transactions get executed interleaved.
-	lastSlot = math.MaxUint64
-	for _, hash := range hashes {
-		slotIdx := getSlot(hash, s.numSlots)
-		if lastSlot != slotIdx {
-			s.slots[slotIdx].mu.Unlock()
-			lastSlot = slotIdx
-		}
-	}
 }
 
 // Free removes an element from the Slots.
-func (s *Slots[E]) Free(elem E, hashes []uint64) {
+func (s *Slots[T]) Free(elem SlotNode[T], hashes []uint64) {
 	for _, hash := range hashes {
 		slotIdx := getSlot(hash, s.numSlots)
 		s.slots[slotIdx].mu.Lock()
@@ -113,7 +107,7 @@ func (s *Slots[E]) Free(elem E, hashes []uint64) {
 		}
 		s.slots[slotIdx].mu.Unlock()
 	}
-	elem.Free()
+	elem.free()
 }
 
 func getSlot(hash, numSlots uint64) uint64 {

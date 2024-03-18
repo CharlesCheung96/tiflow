@@ -27,14 +27,13 @@ import (
 // preserved.
 type ConflictDetector[Worker worker[Txn], Txn txnEvent] struct {
 	workers []Worker
+	// nextWorkerID is used to dispatch transactions round-robin.
+	nextWorkerID atomic.Int64
 
 	// slots are used to find all unfinished transactions
 	// conflicting with an incoming transactions.
 	slots    *internal.Slots[*internal.Node]
 	numSlots uint64
-
-	// nextWorkerID is used to dispatch transactions round-robin.
-	nextWorkerID atomic.Int64
 
 	// Used to run a background goroutine to GC.
 	garbageNodes *chann.DrainableChann[txnFinishedEvent]
