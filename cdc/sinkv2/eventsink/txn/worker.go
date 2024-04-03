@@ -16,6 +16,10 @@ package txn
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pingcap/log"
@@ -52,6 +56,9 @@ type worker struct {
 	flushInterval            time.Duration
 	hasPending               bool
 	postTxnExecutedCallbacks []func()
+
+	flushWait     atomic.Uint64
+	flushWaitOnce sync.Once
 }
 
 func newWorker(ctx context.Context, ID int, backend backend, workerCount int) *worker {
@@ -170,6 +177,18 @@ func (w *worker) onEvent(txn txnWithNotifier) bool {
 // doFlush flushes the backend.
 // It returns true only if it can no longer be flushed.
 func (w *worker) doFlush(flushTimeSlice *time.Duration) error {
+	if w.ID == 1 {
+		w.flushWaitOnce.Do(func() {
+			t := os.Getenv("TICDC_FLUSH_WAIT")
+			cnt, err := strconv.Atoi(t)
+			if err != nil {
+				cnt = 10
+			}
+			w.flushWait.Store(uint64(cnt))
+			log.Error("TICDC_FLUSH_WAIT", zap.Int("cnt", cnt))
+		})
+		time.Sleep(time.Duration(w.flushWait.Load()) * time.Millisecond)
+	}
 	if w.hasPending {
 		start := time.Now()
 		defer func() {
