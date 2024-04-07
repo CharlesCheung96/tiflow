@@ -56,10 +56,9 @@ type worker struct {
 	hasPending               bool
 	postTxnExecutedCallbacks []func()
 
-	isWorkerFull   atomic.Bool
-	flushBoundOnce sync.Once
-	flushWait      atomic.Uint64
-	flushWaitOnce  sync.Once
+	isWorkerFull  atomic.Bool
+	flushWait     atomic.Uint64
+	flushWaitOnce sync.Once
 }
 
 func newWorker(ctx context.Context, ID int, backend backend, workerCount int) *worker {

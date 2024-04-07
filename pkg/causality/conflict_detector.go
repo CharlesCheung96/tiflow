@@ -78,7 +78,7 @@ func NewConflictDetector[Worker worker[Txn], Txn txnEvent](
 func (d *ConflictDetector[Worker, Txn]) Add(txn Txn) {
 	sortedKeysHash := txn.GenSortedDedupKeysHash(d.numSlots)
 	node := internal.NewNode()
-	node.TryResolved = func(workerID int64) bool {
+	node.TrySendToWorker = func(workerID int64) bool {
 		// This callback is called after the transaction is executed.
 		postTxnExecuted := func() {
 			// After this transaction is executed, we can remove the node from the graph,
