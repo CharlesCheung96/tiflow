@@ -99,17 +99,23 @@ func newWorker(ctx context.Context, ID int, backend backend, workerCount int) *w
 // dependency graph and resolve related dependencies for these transacitons
 // which depend on this executed txn.
 func (w *worker) Add(txn *txnEvent, postTxnExecuted func()) bool {
-	if w.isWorkerFull.Load() && len(w.txnCh) <= 0 {
-		w.isWorkerFull.Store(false)
-	}
+	// if w.isWorkerFull.Load() && len(w.txnCh) <= 0 {
+	// 	w.isWorkerFull.Store(false)
+	// }
 
-	if !w.isWorkerFull.Load() {
-		select {
-		case w.txnCh <- txnWithNotifier{txn, postTxnExecuted}:
-			return true
-		default:
-			w.isWorkerFull.CompareAndSwap(false, true)
-		}
+	// if !w.isWorkerFull.Load() {
+	// 	select {
+	// 	case w.txnCh <- txnWithNotifier{txn, postTxnExecuted}:
+	// 		return true
+	// 	default:
+	// 		w.isWorkerFull.CompareAndSwap(false, true)
+	// 	}
+	// }
+	select {
+	case w.txnCh <- txnWithNotifier{txn, postTxnExecuted}:
+		return true
+	default:
+		w.isWorkerFull.CompareAndSwap(false, true)
 	}
 	return false
 }
