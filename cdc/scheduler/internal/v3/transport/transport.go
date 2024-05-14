@@ -65,6 +65,8 @@ type p2pTransport struct {
 		// FIXME it's an unbounded buffer, and may cause OOM!
 		msgBuf []*schedulepb.Message
 	}
+	lastPrintTime time.Time
+	ignoreCount   int64
 }
 
 // Role of the transport user.
@@ -127,6 +129,14 @@ func (t *p2pTransport) Send(
 		_, err := client.TrySendMessage(ctx, t.peerTopic, value)
 		if err != nil {
 			if cerror.ErrPeerMessageSendTryAgain.Equal(err) {
+				t.ignoreCount++
+				if time.Since(t.lastPrintTime) > 30*time.Second {
+					log.Warn("schedulerv3: message send failed since ignored, retry later",
+						zap.String("namespace", t.changefeed.Namespace),
+						zap.String("changefeed", t.changefeed.ID),
+						zap.String("to", to),
+						zap.Int64("ignoreCount", t.ignoreCount))
+				}
 				return nil
 			}
 			if cerror.ErrPeerMessageClientClosed.Equal(err) {
