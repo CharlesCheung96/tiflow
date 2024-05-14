@@ -78,13 +78,13 @@ func (m *messageSenderImpl) SendToNode(ctx context.Context, targetNodeID NodeID,
 type MessageRouter = p2p.MessageRouter
 
 var defaultClientConfig = &p2p.MessageClientConfig{
-	SendChannelSize:         128,
+	SendChannelSize:         10240,
 	BatchSendInterval:       100 * time.Millisecond, // essentially disables flushing
-	MaxBatchBytes:           8 * 1024 * 1024,        // 8MB
+	MaxBatchBytes:           64 * 1024 * 1024,       // 64MB
 	MaxBatchCount:           4096,
-	RetryRateLimitPerSecond: 1.0,             // once per second
-	ClientVersion:           "v5.4.0",        // a fake version
-	MaxRecvMsgSize:          4 * 1024 * 1024, // 4MB
+	RetryRateLimitPerSecond: 1.0,              // once per second
+	ClientVersion:           "v5.4.0",         // a fake version
+	MaxRecvMsgSize:          64 * 1024 * 1024, // 64MB
 }
 
 // NewMessageRouter creates a new MessageRouter instance via tiflow p2p API
