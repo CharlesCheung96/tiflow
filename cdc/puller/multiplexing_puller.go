@@ -98,7 +98,7 @@ func (p *tableProgress) handleResolvedSpans(ctx context.Context, e *model.Resolv
 			zap.String("tableName", p.tableName),
 			zap.Any("tableID", p.spans),
 			zap.Uint64("resolvedTs", resolvedTs),
-			zap.Duration("cost", time.Since(p.start)),
+			zap.Duration("duration", time.Since(p.start)),
 		)
 	}
 	if resolvedTs > p.resolvedTs.Load() {
@@ -234,6 +234,7 @@ func (p *MultiplexingPuller) subscribe(
 
 		resolvedEventsCache: make(chan kv.MultiplexingEvent, tableResolvedTsBufferSize),
 		tsTracker:           frontier.NewFrontier(0, spans...),
+		start:               time.Now(),
 	}
 
 	progress.consume.f = func(

@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strconv"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -258,6 +260,19 @@ func (s *server) Run(serverCtx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	limit := os.Getenv("CDCMemLimit")
+	memLimit := int(15.5 * 1024 * 1024 * 1024)
+	if limit != "" {
+		// parse string to int
+		memLimit, err = strconv.Atoi(limit)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+
+	debug.SetMemoryLimit(int64(memLimit))
+	log.Info("set memory limit", zap.Int("bytes", memLimit), zap.String("memory", humanize.IBytes(uint64(memLimit))))
 
 	return s.run(serverCtx)
 }

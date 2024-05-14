@@ -67,6 +67,8 @@ type p2pTransport struct {
 	}
 	lastPrintTime time.Time
 	ignoreCount   int64
+	totalMsg      int64
+	role          Role
 }
 
 // Role of the transport user.
@@ -91,6 +93,7 @@ func NewTransport(
 		peerTopic:     peerTopic,
 		messageServer: server,
 		messageRouter: router,
+		role:          role,
 	}
 	var err error
 	trans.errCh, err = trans.messageServer.SyncAddHandler(
@@ -114,6 +117,7 @@ func NewTransport(
 func (t *p2pTransport) Send(
 	ctx context.Context, msgs []*schedulepb.Message,
 ) error {
+	t.totalMsg += int64(len(msgs))
 	for i := range msgs {
 		value := msgs[i]
 		to := value.To
@@ -135,7 +139,11 @@ func (t *p2pTransport) Send(
 						zap.String("namespace", t.changefeed.Namespace),
 						zap.String("changefeed", t.changefeed.ID),
 						zap.String("to", to),
-						zap.Int64("ignoreCount", t.ignoreCount))
+						zap.Int64("ignoreCount", t.ignoreCount),
+						zap.Int64("totalMsg", t.totalMsg),
+						zap.Float64("ignoreRate", float64(t.ignoreCount)/float64(t.totalMsg)),
+						zap.String("role", string(t.role)),
+					)
 				}
 				return nil
 			}
