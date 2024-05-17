@@ -178,6 +178,7 @@ func (f *factoryImpl) APIV2Client() (apiv2client.APIV2Interface, error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	client.Status()
 	return client, checkCDCVersion(client)
 }
 
