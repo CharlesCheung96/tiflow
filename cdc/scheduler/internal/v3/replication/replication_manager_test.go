@@ -129,6 +129,26 @@ func TestReplicationManagerHandleAddTableTask(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, msgs, 0)
 	require.Nil(t, r.runningTasks.GetV(spanz.TableIDToComparableSpan(1)))
+
+	// handle heartbeat response with resolvedTs less than checkpointTs
+	msgs, err = r.HandleMessage([]*schedulepb.Message{
+		{
+			From:    "1",
+			MsgType: schedulepb.MsgHeartbeatResponse,
+			HeartbeatResponse: &schedulepb.HeartbeatResponse{
+				Tables: []tablepb.TableStatus{{
+					Span:  spanz.TableIDToComparableSpan(1),
+					State: tablepb.TableStateReplicating,
+					Checkpoint: tablepb.Checkpoint{
+						CheckpointTs: 441808121975537696,
+						ResolvedTs:   441808121975537688,
+					},
+				}},
+			},
+		},
+	})
+	require.Nil(t, err)
+	require.Len(t, msgs, 0)
 }
 
 func TestReplicationManagerRemoveTable(t *testing.T) {

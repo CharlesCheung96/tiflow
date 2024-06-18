@@ -934,7 +934,7 @@ func (m *SinkManager) GetTableStats(span tablepb.Span) TableStats {
 	if m.redoDMLMgr != nil {
 		resolvedTs = m.redoDMLMgr.GetResolvedTs(span)
 	} else {
-		resolvedTs = m.sourceManager.GetTableResolvedTs(span)
+		resolvedTs = tableSink.getReceivedSorterResolvedTs()
 	}
 
 	return TableStats{

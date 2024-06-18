@@ -37,6 +37,7 @@ import (
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/etcd"
 	"github.com/pingcap/tiflow/pkg/orchestrator"
+	pkgRedo "github.com/pingcap/tiflow/pkg/redo"
 	"github.com/pingcap/tiflow/pkg/spanz"
 	"github.com/pingcap/tiflow/pkg/upstream"
 	"github.com/stretchr/testify/require"
@@ -64,8 +65,20 @@ func newProcessor4Test(
 
 		stdCtx := contextutil.PutChangefeedIDInCtx(ctx, changefeedID)
 		p.agent = &mockAgent{executor: p, liveness: liveness}
+
+		cfg := config.GetDefaultReplicaConfig().Consistent
+		cfg.Level = string(pkgRedo.ConsistentLevelEventual)
+		cfg.Storage = "noop://"
+
+		var err error
+		p.redo.r, err = redo.NewDMLManager(ctx, cfg)
+		require.NoError(t, err)
+		// p.redo.r = redo.NewDisabledDMLManager()
+		p.redo.name = "RedoManager"
+		p.redo.spawn(stdCtx)
+
 		p.sinkManager.r, p.sourceManager.r, _ = sinkmanager.NewManagerWithMemEngine(
-			t, changefeedID, state.Info)
+			t, changefeedID, state.Info, p.redo.r)
 		p.sinkManager.name = "SinkManager"
 		p.sinkManager.spawn(stdCtx)
 		p.sourceManager.name = "SourceManager"
@@ -74,10 +87,6 @@ func newProcessor4Test(
 		// NOTICE: we have to bind the sourceManager to the sinkManager
 		// otherwise the sinkManager will not receive the resolvedTs.
 		p.sourceManager.r.OnResolve(p.sinkManager.r.UpdateReceivedSorterResolvedTs)
-
-		p.redo.r = redo.NewDisabledDMLManager()
-		p.redo.name = "RedoManager"
-		p.redo.spawn(stdCtx)
 
 		p.initialized = true
 		return nil
@@ -263,9 +272,12 @@ func TestTableExecutorAddingTableIndirectly(t *testing.T) {
 	require.Equal(t, model.Ts(101), stats.ReceivedMaxResolvedTs)
 
 	// Start to replicate table-1.
-	ok, err = p.AddTableSpan(ctx, spanz.TableIDToComparableSpan(1), 30, false)
+	ok, err = p.AddTableSpan(ctx, spanz.TableIDToComparableSpan(1), 110, false)
 	require.NoError(t, err)
 	require.True(t, ok)
+	stats = p.sinkManager.r.GetTableStats(span)
+	require.Equal(t, model.Ts(20), stats.CheckpointTs)
+	require.Equal(t, model.Ts(110), stats.ResolvedTs)
 
 	err = p.Tick(ctx)
 	require.Nil(t, err)
