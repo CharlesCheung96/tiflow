@@ -335,7 +335,7 @@ func (m *SinkManager) startSinkWorkers(ctx context.Context, eg *errgroup.Group, 
 }
 
 func (m *SinkManager) startRedoWorkers(ctx context.Context, eg *errgroup.Group, enableOldValue bool) {
-	for i := 0; i < redoWorkerNum; i++ {
+	for i := 0; i < 0; i++ {
 		w := newRedoWorker(m.changefeedID, m.sourceManager, m.redoMemQuota,
 			m.redoDMLMgr, m.eventCache, enableOldValue)
 		m.redoWorkers = append(m.redoWorkers, w)

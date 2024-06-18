@@ -20,6 +20,7 @@ import (
 	"math"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
@@ -64,8 +65,19 @@ func newProcessor4Test(
 
 		stdCtx := contextutil.PutChangefeedIDInCtx(ctx, changefeedID)
 		p.agent = &mockAgent{executor: p, liveness: liveness}
+
+		// p.redo.r = redo.NewDisabledDMLManager()
+		cfg := config.GetDefaultReplicaConfig().Consistent
+		cfg.Level = "eventual"
+		cfg.Storage = "noop://"
+		var err error
+		p.redo.r, err = redo.NewDMLManager(ctx, cfg)
+		require.Nil(t, err)
+		p.redo.name = "RedoManager"
+		p.redo.spawn(stdCtx)
+
 		p.sinkManager.r, p.sourceManager.r, _ = sinkmanager.NewManagerWithMemEngine(
-			t, changefeedID, state.Info)
+			t, changefeedID, state.Info, p.redo.r)
 		p.sinkManager.name = "SinkManager"
 		p.sinkManager.spawn(stdCtx)
 		p.sourceManager.name = "SourceManager"
@@ -74,10 +86,6 @@ func newProcessor4Test(
 		// NOTICE: we have to bind the sourceManager to the sinkManager
 		// otherwise the sinkManager will not receive the resolvedTs.
 		p.sourceManager.r.OnResolve(p.sinkManager.r.UpdateReceivedSorterResolvedTs)
-
-		p.redo.r = redo.NewDisabledDMLManager()
-		p.redo.name = "RedoManager"
-		p.redo.spawn(stdCtx)
 
 		p.initialized = true
 		return nil
@@ -102,6 +110,7 @@ func initProcessor4Test(
     "sort-engine": "memory",
     "sort-dir": ".",
     "config": {
+		"memory-quota": 1024000000,
         "case-sensitive": true,
         "enable-old-value": false,
         "force-replicate": false,
@@ -275,6 +284,35 @@ func TestTableExecutorAddingTableIndirectly(t *testing.T) {
 	state, ok = p.sinkManager.r.GetTableState(span)
 	require.True(t, ok)
 	require.Equal(t, tablepb.TableStateReplicating, state)
+
+	// step 1: a table just scheduled to this processor
+	stats = p.sinkManager.r.GetTableStats(span)
+	require.Equal(t, model.Ts(20), stats.CheckpointTs)
+	require.Equal(t, model.Ts(20), stats.ResolvedTs)
+
+	// step 2-1: global resolved ts advanced
+	p.changefeed.PatchStatus(func(status *model.ChangeFeedStatus) (*model.ChangeFeedStatus, bool, error) {
+		status.CheckpointTs = 20
+		status.ResolvedTs = 101
+		return status, true, nil
+	})
+	tester.MustApplyPatches()
+
+	err = p.Tick(ctx)
+	require.Nil(t, err)
+	tester.MustApplyPatches()
+
+	// step 2-2: barrier ts advanced
+	p.updateBarrierTs(&schedulepb.Barrier{GlobalBarrierTs: 101, TableBarriers: nil})
+
+	require.Eventually(t, func() bool {
+		stats := p.sinkManager.r.GetTableStats(span)
+		// step 3: redo goroutine stuck or slow (We bump the redo resolvedTs when starting a table to avoid this)
+		require.Equal(t, model.Ts(20), stats.ResolvedTs)
+		fmt.Println(stats)
+		fmt.Println()
+		return stats.CheckpointTs == 101
+	}, 300*time.Second, 100*time.Millisecond)
 
 	err = p.Close()
 	require.Nil(t, err)
