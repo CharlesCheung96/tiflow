@@ -446,7 +446,9 @@ func (o *ownerImpl) updateMetrics() {
 	// Keep the value of prometheus expression `rate(counter)` = 1
 	// Please also change alert rule in ticdc.rules.yml when change the expression value.
 	now := time.Now()
-	ownershipCounter.Add(float64(now.Sub(o.lastTickTime)) / float64(time.Second))
+	inc := float64(now.Sub(o.lastTickTime)) / float64(time.Second)
+	ownershipCounter.Add(inc)
+	collector.v += inc
 	o.lastTickTime = now
 
 	for cfID, cf := range o.changefeeds {

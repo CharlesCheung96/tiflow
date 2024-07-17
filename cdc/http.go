@@ -77,5 +77,7 @@ func RegisterRoutes(
 
 	// Promtheus metrics API
 	prometheus.DefaultGatherer = registry
-	router.Any("/metrics", gin.WrapH(promhttp.Handler()))
+	router.Any("/metrics", gin.WrapH(promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		EnableOpenMetrics: true,
+	})))
 }

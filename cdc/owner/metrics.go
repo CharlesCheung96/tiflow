@@ -121,6 +121,15 @@ var (
 			Name:      "changefeed_start_time",
 			Help:      "The start time of changefeeds",
 		}, []string{"namespace", "changefeed", "type"})
+
+	collector = &CollectorWithTs{
+		metric: prometheus.NewDesc(
+			"my_owner_metric",
+			"This is my metric with custom TS",
+			nil,
+			nil,
+		),
+	}
 )
 
 const (
@@ -133,8 +142,24 @@ const (
 	downstreamObserverTickDuration = 30 * time.Second
 )
 
+type CollectorWithTs struct {
+	metric *prometheus.Desc
+	v      float64
+}
+
+func (c *CollectorWithTs) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.metric
+}
+
+func (c *CollectorWithTs) Collect(ch chan<- prometheus.Metric) {
+	t := time.Now()
+	s := prometheus.NewMetricWithTimestamp(t, prometheus.MustNewConstMetric(c.metric, prometheus.CounterValue, c.v))
+	ch <- s
+}
+
 // InitMetrics registers all metrics used in owner
 func InitMetrics(registry *prometheus.Registry) {
+	registry.MustRegister(collector)
 	registry.MustRegister(changefeedBarrierTsGauge)
 
 	registry.MustRegister(changefeedCheckpointTsGauge)
