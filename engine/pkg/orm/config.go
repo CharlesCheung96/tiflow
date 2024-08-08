@@ -27,9 +27,9 @@ const (
 	defaultConnMaxLifeTime = 12 * time.Hour
 	defaultMaxIdleConns    = 3
 	defaultMaxOpenConns    = 10
-	defaultReadTimeout     = "3s"
-	defaultWriteTimeout    = "3s"
-	defaultDialTimeout     = "3s"
+	defaultReadTimeout     = "50s"
+	defaultWriteTimeout    = "50s"
+	defaultDialTimeout     = "50s"
 	// TODO: more params for mysql connection
 )
 
