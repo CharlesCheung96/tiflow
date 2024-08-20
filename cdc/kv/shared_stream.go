@@ -520,7 +520,7 @@ func (s *requestedStream) sendResolvedTs(
 		if sfEvents[slot].stream == nil {
 			sfEvents[slot] = newResolvedTsBatch(resolvedTs.Ts, s)
 		}
-		x := &sfEvents[slot].resolvedTsBatch
+		x := sfEvents[slot].resolvedTsBatch
 		if state := s.getState(subscriptionID, regionID); state != nil {
 			x.regions = append(x.regions, state)
 		}

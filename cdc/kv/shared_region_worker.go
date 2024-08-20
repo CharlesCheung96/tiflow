@@ -16,6 +16,7 @@ package kv
 import (
 	"context"
 	"encoding/hex"
+	"sync"
 	"time"
 
 	"github.com/pingcap/errors"
@@ -93,7 +94,7 @@ func newRegionWorkerMetrics(changefeedID model.ChangeFeedID, tableID string, sto
 //  2. eventItem and resolvedTs shouldn't appear simultaneously;
 type statefulEvent struct {
 	eventItem       eventItem
-	resolvedTsBatch resolvedTsBatch
+	resolvedTsBatch *resolvedTsBatch
 	stream          *requestedStream
 	start           time.Time
 }
@@ -104,10 +105,19 @@ type eventItem struct {
 	state *regionFeedState
 }
 
+var resolvedTsBatchPool = sync.Pool{
+	New: func() interface{} {
+		return &resolvedTsBatch{
+			regions: make([]*regionFeedState, 0, 128),
+		}
+	},
+}
+
 // NOTE: all regions must come from the same subscribedTable, and regions will never be empty.
 type resolvedTsBatch struct {
 	ts      uint64
 	regions []*regionFeedState
+	// TODO: Release memory of oversized regions.
 }
 
 func newEventItem(item *cdcpb.Event, state *regionFeedState, stream *requestedStream) statefulEvent {
@@ -119,8 +129,14 @@ func newEventItem(item *cdcpb.Event, state *regionFeedState, stream *requestedSt
 }
 
 func newResolvedTsBatch(ts uint64, stream *requestedStream) statefulEvent {
+	batch := resolvedTsBatchPool.Get().(*resolvedTsBatch)
+	if len(batch.regions) > 102400 {
+		batch.regions = make([]*regionFeedState, 0, 1024)
+	}
+	batch.ts = ts
+	batch.regions = batch.regions[:0]
 	return statefulEvent{
-		resolvedTsBatch: resolvedTsBatch{ts: ts},
+		resolvedTsBatch: batch,
 		stream:          stream,
 		start:           time.Now(),
 	}
@@ -211,7 +227,7 @@ func (w *sharedRegionWorker) processEvent(ctx context.Context, event statefulEve
 		case *cdcpb.Event_Admin_:
 		}
 	} else if len(event.resolvedTsBatch.regions) > 0 {
-		w.handleResolvedTs(ctx, event.resolvedTsBatch)
+		w.handleResolvedTs(ctx, *event.resolvedTsBatch)
 	}
 }
 
