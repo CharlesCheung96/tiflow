@@ -14,6 +14,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/pingcap/tiflow/cdc/processor/tablepb"
@@ -55,6 +56,11 @@ func TestRawKVEntry(t *testing.T) {
 		Key:     []byte("123"),
 		Value:   []byte("345"),
 	}
+
+	b, _ := json.Marshal(raw)
+	raw1 := &RawKVEntry{}
+	require.Nil(t, json.Unmarshal(b, raw1))
+	require.Equal(t, raw, raw1)
 
 	require.Equal(t,
 		"OpType: 1, Key: 123, Value: 345, OldValue: , StartTs: 100, CRTs: 101, RegionID: 0",

@@ -15,6 +15,7 @@ package owner
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -565,4 +566,10 @@ func TestAddSpecialComment(t *testing.T) {
 			"auto_increment = 12;",
 	})
 	require.NotNil(t, err)
+
+	q, err := s.addSpecialComment(&model.DDLEvent{
+		Query: "CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `v_t2` (`id`, `k`) AS SELECT `id` AS `id`,`k` AS `k` FROM `test`.`t1`",
+	})
+	fmt.Println(q)
+	t.Fatal()
 }
