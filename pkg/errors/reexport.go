@@ -36,6 +36,4 @@ var (
 	Annotate = perrors.Annotate
 	// Annotatef is a shortcut for github.com/pingcap/errors.Annotatef.
 	Annotatef = perrors.Annotatef
-	// WithMessage is a shortcut for github.com/pingcap/errors.WithMessage.
-	WithMessage = perrors.WithMessage
 )
